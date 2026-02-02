@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "TraceQA",
+  "description": "Smart Bug Capture - Record, Report, Generate Tests",
+  "version": "0.1.0",
+  "action": {
+    "default_popup": "popup/index.html",
+    "default_title": "TraceQA"
+  },
+  "background": {
+    "service_worker": "background/index.js",
+    "type": "module"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "commands": {
+    "start-recording": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+R",
+        "mac": "Command+Shift+R"
+      },
+      "description": "Start/Stop recording"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

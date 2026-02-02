@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .btn {
+    @apply py-3 px-4 rounded-lg font-semibold transition-colors;
+  }
+
+  .btn-primary {
+    @apply bg-blue-500 hover:bg-blue-600 text-white;
+  }
+
+  .btn-danger {
+    @apply bg-red-500 hover:bg-red-600 text-white;
+  }
+
+  .btn-secondary {
+    @apply bg-white hover:bg-gray-50 text-gray-700 border border-gray-200;
+  }
+
+  .btn:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+}
