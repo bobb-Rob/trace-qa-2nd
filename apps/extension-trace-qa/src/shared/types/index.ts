@@ -16,14 +16,14 @@ export interface RecordingState {
   isLoading: boolean;
 }
 
+// Note: No ERROR state - errors are events that lead back to IDLE
 export type SessionState =
   | 'IDLE'
   | 'REQUESTING_PERMISSION'
   | 'STARTING'
   | 'RECORDING'
   | 'STOPPING'
-  | 'UPLOADING'
-  | 'ERROR';
+  | 'UPLOADING';
 
 export interface TraceQAStorage {
   isRecording: boolean;

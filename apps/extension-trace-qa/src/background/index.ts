@@ -1,33 +1,36 @@
 /**
  * Background Service Worker
  * Responsibilities: Session orchestration, permissions, message routing, state persistence
+ *
+ * Uses a finite state machine (FSM) for deterministic, self-healing state management.
  */
 
 import {
   RECORDER_CONFIG,
   type VideoRecordingConfig,
-  type SessionState,
   type OffscreenCaptureCompletePayload,
   type OffscreenErrorPayload,
 } from '../shared/types';
 
-console.log('[TraceQA] Background service worker started');
+import {
+  // FSM core
+  transition,
+  getState,
+  getContext,
+  updateContext,
+  restoreFromStorage,
+  setTerminalCallback,
+  // Watchdog
+  initWatchdog,
+  validateStateOnWake,
+  isMessageFresh,
+  hasOffscreenDocument,
+} from './fsm';
 
-// State
-let currentSessionId: string | null = null;
-let currentSessionState: SessionState = 'IDLE';
-let recordingStartTime: number | null = null;
+console.log('[TraceQA] Background service worker started');
 
 // Offscreen document management
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen/index.html';
-
-async function hasOffscreenDocument(): Promise<boolean> {
-  const contexts = await chrome.runtime.getContexts({
-    contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
-    documentUrls: [chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH)],
-  });
-  return contexts.length > 0;
-}
 
 async function createOffscreenDocument(): Promise<void> {
   if (await hasOffscreenDocument()) {
@@ -50,22 +53,30 @@ async function closeOffscreenDocument(): Promise<void> {
   }
 }
 
-// State persistence
-async function updateState(
-  state: SessionState,
-  extra: Partial<{
-    isRecording: boolean;
-    sessionId: string | null;
-    startTime: number | null;
-    lastError: string | null;
-  }> = {}
-): Promise<void> {
-  currentSessionState = state;
-  await chrome.storage.local.set({
-    sessionState: state,
-    ...extra,
-  });
-  console.log('[TraceQA] State updated:', state, extra);
+/**
+ * Centralized cleanup function - called by FSM on terminal transitions.
+ * This ensures the state machine is always reset to IDLE after any session ends.
+ */
+async function finalizeSession(error?: string): Promise<void> {
+  console.log('[TraceQA] Finalizing session', error ? `(error: ${error})` : '(success)');
+
+  try {
+    // Always close offscreen document first (best effort)
+    await closeOffscreenDocument().catch((e) => {
+      console.warn('[TraceQA] Failed to close offscreen document:', e);
+    });
+  } finally {
+    // Reset context
+    updateContext({ sessionId: null, recordingStartTime: null });
+
+    // Persist cleanup state
+    await chrome.storage.local.set({
+      isRecording: false,
+      sessionId: null,
+      startTime: null,
+      lastError: error ?? null,
+    });
+  }
 }
 
 // Message handler
@@ -126,13 +137,20 @@ async function handleStartRecording(
   try {
     console.log('[TraceQA] Starting recording:', payload.sessionId);
 
-    if (currentSessionState !== 'IDLE') {
+    // Check current state via FSM
+    if (getState() !== 'IDLE') {
       sendResponse({ success: false, error: 'Already recording or busy' });
       return;
     }
 
-    currentSessionId = payload.sessionId;
-    await updateState('REQUESTING_PERMISSION', {
+    // Update context with session info
+    updateContext({ sessionId: payload.sessionId });
+
+    // Transition: IDLE -> REQUESTING_PERMISSION
+    await transition({ type: 'START_REQUESTED' }, 'User clicked start');
+
+    // Persist session info to storage
+    await chrome.storage.local.set({
       sessionId: payload.sessionId,
       isRecording: false,
     });
@@ -140,13 +158,14 @@ async function handleStartRecording(
     // 1. Create offscreen document
     await createOffscreenDocument();
 
+    // Transition: REQUESTING_PERMISSION -> STARTING
+    await transition({ type: 'PERMISSION_GRANTED' }, 'Offscreen document created');
+
     // 2. Get recorder config based on quality setting
     const qualityConfig = RECORDER_CONFIG[payload.videoConfig.quality];
 
-    await updateState('STARTING', { isRecording: false });
-
     // 3. Send message to offscreen to start capture
-    // The offscreen document will call getDisplayMedia() since service workers can't access DOM APIs
+    // State stays STARTING until we receive OFFSCREEN_CAPTURE_STARTED
     chrome.runtime.sendMessage({
       type: 'OFFSCREEN_START_CAPTURE',
       payload: {
@@ -161,17 +180,12 @@ async function handleStartRecording(
       },
     });
 
-    recordingStartTime = Date.now();
-    await updateState('RECORDING', {
-      isRecording: true,
-      startTime: recordingStartTime,
-    });
-
+    // Response is immediate - actual RECORDING state comes via OFFSCREEN_CAPTURE_STARTED
     sendResponse({ success: true, sessionId: payload.sessionId });
   } catch (error) {
     console.error('[TraceQA] Start recording error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    await finalizeSession(errorMessage);
+    await transition({ type: 'CAPTURE_FAILED' }, errorMessage);
     sendResponse({
       success: false,
       error: errorMessage,
@@ -186,17 +200,23 @@ async function handleStopRecording(
   try {
     console.log('[TraceQA] Stopping recording:', payload.sessionId);
 
-    if (currentSessionState !== 'RECORDING') {
+    const ctx = getContext();
+
+    if (ctx.state !== 'RECORDING') {
       sendResponse({ success: false, error: 'Not recording' });
       return;
     }
 
-    if (payload.sessionId !== currentSessionId) {
+    if (payload.sessionId !== ctx.sessionId) {
       sendResponse({ success: false, error: 'Session mismatch' });
       return;
     }
 
-    await updateState('STOPPING', { isRecording: false });
+    // Transition: RECORDING -> STOPPING
+    await transition({ type: 'STOP_REQUESTED' }, 'User clicked stop');
+
+    // Persist state
+    await chrome.storage.local.set({ isRecording: false });
 
     // Tell offscreen to stop and finalize
     chrome.runtime.sendMessage({
@@ -209,7 +229,7 @@ async function handleStopRecording(
   } catch (error) {
     console.error('[TraceQA] Stop recording error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    await finalizeSession(errorMessage);
+    await transition({ type: 'CAPTURE_FAILED' }, errorMessage);
     sendResponse({
       success: false,
       error: errorMessage,
@@ -217,15 +237,45 @@ async function handleStopRecording(
   }
 }
 
-function handleCaptureStarted(payload: { sessionId: string }): void {
+/**
+ * Handle capture started confirmation from offscreen.
+ * This is where we actually transition to RECORDING state.
+ */
+async function handleCaptureStarted(payload: { sessionId: string }): Promise<void> {
+  // Validate message freshness
+  if (!isMessageFresh(payload.sessionId)) {
+    console.warn('[TraceQA] Ignoring stale CAPTURE_STARTED message');
+    return;
+  }
+
   console.log('[TraceQA] Capture started confirmed:', payload.sessionId);
+
+  // Transition: STARTING -> RECORDING
+  await transition({ type: 'CAPTURE_STARTED' }, 'Offscreen confirmed capture started');
+
+  // Update context with recording start time
+  const startTime = Date.now();
+  updateContext({ recordingStartTime: startTime });
+
+  // Persist recording state
+  await chrome.storage.local.set({
+    isRecording: true,
+    startTime,
+  });
 }
 
 async function handleCaptureComplete(payload: OffscreenCaptureCompletePayload): Promise<void> {
+  // Validate message freshness
+  if (!isMessageFresh(payload.sessionId)) {
+    console.warn('[TraceQA] Ignoring stale CAPTURE_COMPLETE message');
+    return;
+  }
+
   console.log('[TraceQA] Capture complete:', payload);
 
   try {
-    await updateState('UPLOADING');
+    // Transition: STOPPING -> UPLOADING
+    await transition({ type: 'CAPTURE_STOPPED' }, 'MediaRecorder stopped successfully');
 
     // Tell offscreen to trigger the download (it has DOM access for URL.createObjectURL)
     chrome.runtime.sendMessage({
@@ -240,23 +290,33 @@ async function handleCaptureComplete(payload: OffscreenCaptureCompletePayload): 
   } catch (error) {
     console.error('[TraceQA] Error handling capture complete:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    await finalizeSession(errorMessage);
+    await transition({ type: 'CAPTURE_FAILED' }, errorMessage);
   }
 }
 
 async function handleCaptureError(payload: OffscreenErrorPayload): Promise<void> {
   console.error('[TraceQA] Capture error:', payload);
-  await finalizeSession(payload.message);
+
+  // Transition to IDLE via CAPTURE_FAILED
+  await transition({ type: 'CAPTURE_FAILED' }, payload.message);
 }
 
 async function handleDownloadComplete(payload: { sessionId: string; success: boolean; error?: string }): Promise<void> {
+  // Validate message freshness
+  if (!isMessageFresh(payload.sessionId)) {
+    console.warn('[TraceQA] Ignoring stale DOWNLOAD_COMPLETE message');
+    return;
+  }
+
   console.log('[TraceQA] Download complete:', payload);
 
   if (payload.success) {
     console.log('[TraceQA] Recording saved successfully');
-    await finalizeSession();
+    // Transition: UPLOADING -> IDLE (success)
+    await transition({ type: 'UPLOAD_COMPLETE' }, 'Download completed successfully');
   } else {
-    await finalizeSession(payload.error || 'Download failed');
+    // Transition: UPLOADING -> IDLE (failure)
+    await transition({ type: 'UPLOAD_FAILED' }, payload.error || 'Download failed');
   }
 }
 
@@ -284,60 +344,25 @@ async function handleGetStatus(sendResponse: (response: unknown) => void): Promi
   }
 }
 
-/**
- * Centralized cleanup function - MUST be called at ALL terminal paths (success or failure).
- * This ensures the state machine is always reset to IDLE after any session ends.
- */
-async function finalizeSession(error?: string): Promise<void> {
-  console.log('[TraceQA] Finalizing session', error ? `(error: ${error})` : '(success)');
-
-  try {
-    // Always close offscreen document first (best effort)
-    await closeOffscreenDocument().catch((e) => {
-      console.warn('[TraceQA] Failed to close offscreen document:', e);
-    });
-  } finally {
-    // Reset in-memory state
-    currentSessionId = null;
-    recordingStartTime = null;
-
-    // Persist IDLE state - this MUST succeed for recovery
-    await updateState('IDLE', {
-      isRecording: false,
-      sessionId: null,
-      startTime: null,
-      lastError: error ?? null,
-    });
-  }
-}
-
-// Restore state on service worker wake with self-healing
+// Initialize FSM on service worker wake
 (async () => {
-  const data = await chrome.storage.local.get(['sessionState', 'sessionId', 'isRecording', 'startTime']);
-  const restoredState = data.sessionState ?? 'IDLE';
-  const restoredSessionId = data.sessionId ?? null;
+  try {
+    // Step 1: Restore FSM context from storage
+    await restoreFromStorage();
 
-  console.log('[TraceQA] Restored state:', restoredState, restoredSessionId);
+    // Step 2: Set terminal callback (for cleanup on IDLE transitions)
+    setTerminalCallback(finalizeSession);
 
-  // Self-healing: If state is non-IDLE, verify the recording is still valid
-  if (restoredState !== 'IDLE') {
-    const hasOffscreen = await hasOffscreenDocument();
+    // Step 3: Initialize watchdog integration
+    initWatchdog();
 
-    // If no offscreen document exists, the recording session is orphaned - reset to IDLE
-    if (!hasOffscreen) {
-      console.warn('[TraceQA] Self-healing: Found stale non-IDLE state without offscreen document, resetting to IDLE');
-      await finalizeSession('Session recovered after service worker restart');
-      return;
-    }
+    // Step 4: Validate state (self-healing)
+    await validateStateOnWake();
 
-    // Offscreen exists - restore in-memory state
-    currentSessionState = restoredState;
-    currentSessionId = restoredSessionId;
-    recordingStartTime = data.startTime ?? null;
-  } else {
-    // State is IDLE - just restore it
-    currentSessionState = 'IDLE';
-    currentSessionId = null;
-    recordingStartTime = null;
+    console.log('[TraceQA] FSM initialized, state:', getState());
+  } catch (error) {
+    console.error('[TraceQA] FSM initialization failed:', error);
+    // Force reset to IDLE as fallback
+    await finalizeSession('FSM initialization failed');
   }
 })();
