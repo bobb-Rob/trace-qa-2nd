@@ -27,6 +27,7 @@ export type SessionEvent =
   | { type: 'CAPTURE_FAILED' }
   | { type: 'STOP_REQUESTED' }
   | { type: 'CAPTURE_STOPPED' }
+  | { type: 'STREAM_ENDED' }      // External termination (user clicked "Stop sharing")
   | { type: 'UPLOAD_COMPLETE' }
   | { type: 'UPLOAD_FAILED' }
   | { type: 'FORCE_RESET' };

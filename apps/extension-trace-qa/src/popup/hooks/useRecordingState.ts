@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { RecordingState, VideoRecordingConfig, SessionState } from '@shared/types';
+import type { RecordingState, VideoRecordingConfig, SessionState, UISessionEndedPayload } from '@shared/types';
 
 const initialState: RecordingState = {
   isRecording: false,
@@ -77,6 +77,29 @@ export function useRecordingState(): {
         }
       }
     );
+  }, []);
+
+  // Listen for session ended broadcasts from background
+  useEffect(() => {
+    const handleMessage = (message: { type: string; payload?: UISessionEndedPayload }) => {
+      if (message.type === 'UI_SESSION_ENDED' && message.payload) {
+        console.log('[TraceQA:Popup] Session ended:', message.payload);
+
+        // Reset state to idle
+        setState({
+          isRecording: false,
+          sessionId: null,
+          startTime: null,
+          error: message.payload.reason === 'error' ? message.payload.error ?? 'Recording failed' : null,
+          isLoading: false,
+        });
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleMessage);
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleMessage);
+    };
   }, []);
 
   const setVideoConfig = useCallback((config: VideoRecordingConfig): void => {

@@ -20,6 +20,10 @@ describe('reduce (pure function)', () => {
       expect(reduce('RECORDING', { type: 'STOP_REQUESTED' })).toBe('STOPPING');
     });
 
+    it('should transition RECORDING -> UPLOADING on STREAM_ENDED (external stop)', () => {
+      expect(reduce('RECORDING', { type: 'STREAM_ENDED' })).toBe('UPLOADING');
+    });
+
     it('should transition STOPPING -> UPLOADING on CAPTURE_STOPPED', () => {
       expect(reduce('STOPPING', { type: 'CAPTURE_STOPPED' })).toBe('UPLOADING');
     });
@@ -89,6 +93,14 @@ describe('reduce (pure function)', () => {
 
     it('should return STOPPING for STOPPING + START_REQUESTED', () => {
       expect(reduce('STOPPING', { type: 'START_REQUESTED' })).toBe('STOPPING');
+    });
+
+    it('should return IDLE for IDLE + STREAM_ENDED (only valid from RECORDING)', () => {
+      expect(reduce('IDLE', { type: 'STREAM_ENDED' })).toBe('IDLE');
+    });
+
+    it('should return STOPPING for STOPPING + STREAM_ENDED (only valid from RECORDING)', () => {
+      expect(reduce('STOPPING', { type: 'STREAM_ENDED' })).toBe('STOPPING');
     });
   });
 

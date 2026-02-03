@@ -76,6 +76,26 @@ describe('recovery guarantees', () => {
       state = reduce(state, { type: 'UPLOAD_COMPLETE' });
       expect(state).toBe('IDLE');
     });
+
+    it('should complete external stop path: IDLE -> ... -> IDLE via STREAM_ENDED', () => {
+      let state: SessionState = 'IDLE';
+
+      state = reduce(state, { type: 'START_REQUESTED' });
+      expect(state).toBe('REQUESTING_PERMISSION');
+
+      state = reduce(state, { type: 'PERMISSION_GRANTED' });
+      expect(state).toBe('STARTING');
+
+      state = reduce(state, { type: 'CAPTURE_STARTED' });
+      expect(state).toBe('RECORDING');
+
+      // User clicks "Stop sharing" in browser UI (external stop)
+      state = reduce(state, { type: 'STREAM_ENDED' });
+      expect(state).toBe('UPLOADING');
+
+      state = reduce(state, { type: 'UPLOAD_COMPLETE' });
+      expect(state).toBe('IDLE');
+    });
   });
 
   describe('failure at any point recovers to IDLE', () => {
@@ -197,6 +217,24 @@ describe('recovery guarantees', () => {
       state = reduce(state, { type: 'START_REQUESTED' });
       expect(state).toBe('REQUESTING_PERMISSION');
     });
+
+    it('should allow immediate re-recording after external stop (STREAM_ENDED)', () => {
+      let state: SessionState = 'IDLE';
+
+      // First attempt - user clicks "Stop sharing"
+      state = reduce(state, { type: 'START_REQUESTED' });
+      state = reduce(state, { type: 'PERMISSION_GRANTED' });
+      state = reduce(state, { type: 'CAPTURE_STARTED' });
+      state = reduce(state, { type: 'STREAM_ENDED' });
+      expect(state).toBe('UPLOADING');
+
+      state = reduce(state, { type: 'UPLOAD_COMPLETE' });
+      expect(state).toBe('IDLE');
+
+      // Second attempt - should work
+      state = reduce(state, { type: 'START_REQUESTED' });
+      expect(state).toBe('REQUESTING_PERMISSION');
+    });
   });
 
   describe('duplicate event handling', () => {
@@ -260,6 +298,7 @@ describe('recovery guarantees', () => {
         { type: 'CAPTURE_FAILED' },
         { type: 'STOP_REQUESTED' },
         { type: 'CAPTURE_STOPPED' },
+        { type: 'STREAM_ENDED' },
         { type: 'UPLOAD_COMPLETE' },
         { type: 'UPLOAD_FAILED' },
         { type: 'FORCE_RESET' },

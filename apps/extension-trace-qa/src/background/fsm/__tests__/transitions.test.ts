@@ -76,6 +76,10 @@ describe('isValidTransition', () => {
       expect(isValidTransition('RECORDING', 'STOP_REQUESTED')).toBe(true);
     });
 
+    it('should allow STREAM_ENDED for external stop (Stop sharing button)', () => {
+      expect(isValidTransition('RECORDING', 'STREAM_ENDED')).toBe(true);
+    });
+
     it('should allow CAPTURE_FAILED for unexpected stream end', () => {
       expect(isValidTransition('RECORDING', 'CAPTURE_FAILED')).toBe(true);
     });
@@ -166,6 +170,10 @@ describe('getNextState', () => {
     expect(getNextState('RECORDING', 'STOP_REQUESTED')).toBe('STOPPING');
   });
 
+  it('should return UPLOADING for RECORDING + STREAM_ENDED (external stop)', () => {
+    expect(getNextState('RECORDING', 'STREAM_ENDED')).toBe('UPLOADING');
+  });
+
   it('should return UPLOADING for STOPPING + CAPTURE_STOPPED', () => {
     expect(getNextState('STOPPING', 'CAPTURE_STOPPED')).toBe('UPLOADING');
   });
@@ -196,6 +204,7 @@ describe('isTerminalEvent', () => {
     expect(isTerminalEvent('CAPTURE_STARTED')).toBe(false);
     expect(isTerminalEvent('STOP_REQUESTED')).toBe(false);
     expect(isTerminalEvent('CAPTURE_STOPPED')).toBe(false);
+    expect(isTerminalEvent('STREAM_ENDED')).toBe(false); // Goes to UPLOADING, not IDLE
   });
 });
 
@@ -210,6 +219,7 @@ describe('isErrorEvent', () => {
     expect(isErrorEvent('START_REQUESTED')).toBe(false);
     expect(isErrorEvent('UPLOAD_COMPLETE')).toBe(false);
     expect(isErrorEvent('FORCE_RESET')).toBe(false);
+    expect(isErrorEvent('STREAM_ENDED')).toBe(false); // External stop is not an error
   });
 });
 

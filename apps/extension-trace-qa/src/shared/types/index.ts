@@ -106,8 +106,17 @@ export interface OffscreenStopPayload {
 export type OffscreenToBackgroundMessage =
   | { type: 'OFFSCREEN_CAPTURE_STARTED'; payload: { sessionId: string } }
   | { type: 'OFFSCREEN_CAPTURE_COMPLETE'; payload: OffscreenCaptureCompletePayload }
+  | { type: 'OFFSCREEN_STREAM_ENDED'; payload: OffscreenStreamEndedPayload } // External stop (Stop sharing)
   | { type: 'OFFSCREEN_CAPTURE_ERROR'; payload: OffscreenErrorPayload }
   | { type: 'OFFSCREEN_SIZE_WARNING'; payload: { sessionId: string; currentSize: number } };
+
+// Payload for external stream termination (user clicked Stop sharing)
+export interface OffscreenStreamEndedPayload {
+  sessionId: string;
+  blobKey: string;
+  size: number;
+  duration: number;
+}
 
 export interface OffscreenCaptureCompletePayload {
   sessionId: string;
@@ -134,6 +143,16 @@ export type ErrorCode =
   | 'QUOTA_EXCEEDED'
   | 'UPLOAD_FAILED'
   | 'TIMEOUT';
+
+// Message types for Background → Popup (broadcasts)
+export type BackgroundToPopupMessage =
+  | { type: 'UI_SESSION_ENDED'; payload: UISessionEndedPayload };
+
+export interface UISessionEndedPayload {
+  sessionId: string;
+  reason: 'completed' | 'external_stop' | 'error';
+  error?: string;
+}
 
 // IndexedDB constants
 export const IDB_CONFIG = {

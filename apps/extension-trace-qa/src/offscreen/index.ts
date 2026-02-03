@@ -11,6 +11,10 @@ let recordedChunks: Blob[] = [];
 let currentSize = 0;
 let recordingStartTime: number | null = null;
 
+// Flags to track stop intent
+let stopRequested = false;      // Set when background sends OFFSCREEN_STOP_CAPTURE
+let streamEndedExternally = false; // Set when track.onended fires (user clicked "Stop sharing")
+
 // Initialize IndexedDB
 async function initDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -101,6 +105,8 @@ async function handleStartCapture(
     recordedChunks = [];
     currentSize = 0;
     recordingStartTime = Date.now();
+    stopRequested = false;
+    streamEndedExternally = false;
 
     // Request screen capture from the offscreen document
     // Since we're in offscreen context, we can call getDisplayMedia
@@ -168,6 +174,9 @@ async function handleStartCapture(
     mediaRecorder.onstop = async () => {
       console.log('[TraceQA:Offscreen] MediaRecorder stopped');
 
+      // Capture the external stop flag before any async operations
+      const wasExternalStop = streamEndedExternally;
+
       try {
         // Finalize blob
         const blob = new Blob(recordedChunks, { type: mimeType });
@@ -179,21 +188,41 @@ async function handleStartCapture(
 
         console.log(`[TraceQA:Offscreen] Blob stored: ${blob.size} bytes, key: ${blobKey}`);
 
-        // Notify background
-        chrome.runtime.sendMessage({
-          type: 'OFFSCREEN_CAPTURE_COMPLETE',
-          payload: {
-            sessionId: currentSessionId,
-            blobKey,
-            size: blob.size,
-            duration,
-          },
-        });
+        // Send different message based on how stop was triggered
+        if (wasExternalStop) {
+          // External stop (user clicked "Stop sharing" in browser UI)
+          // Send STREAM_ENDED to preserve FSM semantics
+          console.log('[TraceQA:Offscreen] Sending OFFSCREEN_STREAM_ENDED (external stop)');
+          chrome.runtime.sendMessage({
+            type: 'OFFSCREEN_STREAM_ENDED',
+            payload: {
+              sessionId: currentSessionId,
+              blobKey,
+              size: blob.size,
+              duration,
+            },
+          });
+        } else {
+          // Requested stop (user clicked "Stop Recording" button)
+          // Send normal CAPTURE_COMPLETE
+          console.log('[TraceQA:Offscreen] Sending OFFSCREEN_CAPTURE_COMPLETE (requested stop)');
+          chrome.runtime.sendMessage({
+            type: 'OFFSCREEN_CAPTURE_COMPLETE',
+            payload: {
+              sessionId: currentSessionId,
+              blobKey,
+              size: blob.size,
+              duration,
+            },
+          });
+        }
 
         // Cleanup
         recordedChunks = [];
         currentSize = 0;
         recordingStartTime = null;
+        stopRequested = false;
+        streamEndedExternally = false;
       } catch (error) {
         console.error('[TraceQA:Offscreen] Error finalizing recording:', error);
         chrome.runtime.sendMessage({
@@ -204,6 +233,10 @@ async function handleStartCapture(
             message: error instanceof Error ? error.message : 'Unknown error',
           },
         });
+
+        // Reset flags on error too
+        stopRequested = false;
+        streamEndedExternally = false;
       }
     };
 
@@ -220,9 +253,16 @@ async function handleStartCapture(
       });
     };
 
-    // Handle stream ending (user stopped sharing)
+    // Handle stream ending (user stopped sharing via browser UI)
     stream.getVideoTracks()[0].onended = () => {
-      console.log('[TraceQA:Offscreen] Stream ended by user');
+      console.log('[TraceQA:Offscreen] Stream ended externally (user clicked Stop sharing)');
+
+      // Mark this as an external stop BEFORE calling mediaRecorder.stop()
+      // This flag is checked in onstop to send the correct message type
+      if (!stopRequested) {
+        streamEndedExternally = true;
+      }
+
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
       }
@@ -267,6 +307,10 @@ async function handleStopCapture(
     }
 
     if (mediaRecorder.state !== 'inactive') {
+      // Mark this as a requested stop (user clicked "Stop Recording")
+      // This flag is checked in onstop to send OFFSCREEN_CAPTURE_COMPLETE
+      stopRequested = true;
+
       // Stop the media recorder - this will trigger onstop
       mediaRecorder.stop();
 
@@ -277,6 +321,7 @@ async function handleStopCapture(
     sendResponse({ success: true });
   } catch (error) {
     console.error('[TraceQA:Offscreen] Stop capture error:', error);
+    stopRequested = false; // Reset on error
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

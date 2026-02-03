@@ -9,6 +9,7 @@ import {
   RECORDER_CONFIG,
   type VideoRecordingConfig,
   type OffscreenCaptureCompletePayload,
+  type OffscreenStreamEndedPayload,
   type OffscreenErrorPayload,
 } from '../shared/types';
 
@@ -51,6 +52,25 @@ async function closeOffscreenDocument(): Promise<void> {
     console.log('[TraceQA] Closing offscreen document');
     await chrome.offscreen.closeDocument();
   }
+}
+
+/**
+ * Broadcast session ended notification to all extension pages (popup, etc.)
+ * This allows the UI to update immediately without polling.
+ */
+function broadcastSessionEnded(
+  sessionId: string,
+  reason: 'completed' | 'external_stop' | 'error',
+  error?: string
+): void {
+  console.log('[TraceQA] Broadcasting UI_SESSION_ENDED:', { sessionId, reason, error });
+
+  chrome.runtime.sendMessage({
+    type: 'UI_SESSION_ENDED',
+    payload: { sessionId, reason, error },
+  }).catch(() => {
+    // Ignore errors if no listeners (popup might be closed)
+  });
 }
 
 /**
@@ -103,6 +123,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
     case 'OFFSCREEN_CAPTURE_COMPLETE':
       handleCaptureComplete(message.payload);
+      return false;
+
+    case 'OFFSCREEN_STREAM_ENDED':
+      handleStreamEnded(message.payload);
       return false;
 
     case 'OFFSCREEN_CAPTURE_ERROR':
@@ -294,11 +318,52 @@ async function handleCaptureComplete(payload: OffscreenCaptureCompletePayload): 
   }
 }
 
+/**
+ * Handle external stream termination (user clicked "Stop sharing" in browser UI).
+ * This is semantically different from a user-initiated stop via the extension UI.
+ */
+async function handleStreamEnded(payload: OffscreenStreamEndedPayload): Promise<void> {
+  // Validate message freshness
+  if (!isMessageFresh(payload.sessionId)) {
+    console.warn('[TraceQA] Ignoring stale STREAM_ENDED message');
+    return;
+  }
+
+  console.log('[TraceQA] Stream ended externally (Stop sharing):', payload);
+
+  try {
+    // Transition: RECORDING -> UPLOADING (via STREAM_ENDED event)
+    // This preserves FSM semantics: external stop is different from requested stop
+    await transition({ type: 'STREAM_ENDED' }, 'User clicked Stop sharing in browser UI');
+
+    // Persist state
+    await chrome.storage.local.set({ isRecording: false });
+
+    // Tell offscreen to trigger the download (video data is still valid)
+    chrome.runtime.sendMessage({
+      type: 'OFFSCREEN_DOWNLOAD_BLOB',
+      payload: {
+        sessionId: payload.sessionId,
+        blobKey: payload.blobKey,
+      },
+    });
+
+    // State will be updated when download completes via OFFSCREEN_DOWNLOAD_COMPLETE
+  } catch (error) {
+    console.error('[TraceQA] Error handling stream ended:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    await transition({ type: 'CAPTURE_FAILED' }, errorMessage);
+  }
+}
+
 async function handleCaptureError(payload: OffscreenErrorPayload): Promise<void> {
   console.error('[TraceQA] Capture error:', payload);
 
   // Transition to IDLE via CAPTURE_FAILED
   await transition({ type: 'CAPTURE_FAILED' }, payload.message);
+
+  // Notify popup that session ended with error
+  broadcastSessionEnded(payload.sessionId, 'error', payload.message);
 }
 
 async function handleDownloadComplete(payload: { sessionId: string; success: boolean; error?: string }): Promise<void> {
@@ -314,9 +379,15 @@ async function handleDownloadComplete(payload: { sessionId: string; success: boo
     console.log('[TraceQA] Recording saved successfully');
     // Transition: UPLOADING -> IDLE (success)
     await transition({ type: 'UPLOAD_COMPLETE' }, 'Download completed successfully');
+
+    // Notify popup that session ended successfully
+    broadcastSessionEnded(payload.sessionId, 'completed');
   } else {
     // Transition: UPLOADING -> IDLE (failure)
     await transition({ type: 'UPLOAD_FAILED' }, payload.error || 'Download failed');
+
+    // Notify popup that session ended with error
+    broadcastSessionEnded(payload.sessionId, 'error', payload.error);
   }
 }
 

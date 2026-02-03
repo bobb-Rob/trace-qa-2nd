@@ -33,7 +33,8 @@ export const TRANSITION_TABLE: Record<
   },
   RECORDING: {
     STOP_REQUESTED: 'STOPPING',
-    CAPTURE_FAILED: 'IDLE', // Stream ended unexpectedly -> IDLE
+    STREAM_ENDED: 'UPLOADING', // External termination (Stop sharing) - still save video
+    CAPTURE_FAILED: 'IDLE', // Error with no salvageable data -> IDLE
     FORCE_RESET: 'IDLE',
   },
   STOPPING: {
