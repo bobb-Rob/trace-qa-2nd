@@ -85,7 +85,7 @@
 | **Preconditions** | Active recording in progress |
 | **Steps** | 1. Start recording<br>2. Click browser's "Stop sharing" button (blue bar) |
 | **Expected State Behavior** | RECORDING → IDLE (via CAPTURE_FAILED, stream ended) |
-| **Expected UI Behavior** | - Recording stops<br>- Popup returns to idle on next open<br>- Partial video may or may not be saved |
+| **Expected UI Behavior** | - Recording stops<br>- Popup returns to idle on next open<br>- Video stops where user clicked on "Stop sharing" |
 | **Expected Logs** | `[TraceQA] Capture error: { errorCode: 'STREAM_ENDED' }`<br>`[TraceQA:FSM] Transition: RECORDING → IDLE` |
 | **Auto-Recovery** | Yes - finalizeSession() called automatically |
 

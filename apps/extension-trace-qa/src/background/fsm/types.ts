@@ -12,6 +12,7 @@ export type SessionState =
   | 'REQUESTING_PERMISSION'
   | 'STARTING'
   | 'RECORDING'
+  | 'PAUSED'
   | 'STOPPING'
   | 'UPLOADING';
 
@@ -28,6 +29,8 @@ export type SessionEvent =
   | { type: 'STOP_REQUESTED' }
   | { type: 'CAPTURE_STOPPED' }
   | { type: 'STREAM_ENDED' }      // External termination (user clicked "Stop sharing")
+  | { type: 'PAUSE_REQUESTED' }   // User requested pause
+  | { type: 'RESUME_REQUESTED' }  // User requested resume
   | { type: 'UPLOAD_COMPLETE' }
   | { type: 'UPLOAD_FAILED' }
   | { type: 'FORCE_RESET' };
@@ -66,4 +69,7 @@ export interface FSMContext {
   sessionId: string | null;
   recordingStartTime: number | null;
   lastTransition: TransitionContext | null;
+  // Pause-related timing (background owns duration tracking)
+  pauseStartTime: number | null;      // When pause started (null if not paused)
+  totalPausedTime: number;            // Accumulated paused milliseconds
 }

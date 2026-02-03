@@ -84,6 +84,10 @@ describe('isValidTransition', () => {
       expect(isValidTransition('RECORDING', 'CAPTURE_FAILED')).toBe(true);
     });
 
+    it('should allow PAUSE_REQUESTED', () => {
+      expect(isValidTransition('RECORDING', 'PAUSE_REQUESTED')).toBe(true);
+    });
+
     it('should allow FORCE_RESET', () => {
       expect(isValidTransition('RECORDING', 'FORCE_RESET')).toBe(true);
     });
@@ -94,6 +98,44 @@ describe('isValidTransition', () => {
 
     it('should reject START_REQUESTED', () => {
       expect(isValidTransition('RECORDING', 'START_REQUESTED')).toBe(false);
+    });
+
+    it('should reject RESUME_REQUESTED (already recording)', () => {
+      expect(isValidTransition('RECORDING', 'RESUME_REQUESTED')).toBe(false);
+    });
+  });
+
+  describe('from PAUSED state', () => {
+    it('should allow RESUME_REQUESTED', () => {
+      expect(isValidTransition('PAUSED', 'RESUME_REQUESTED')).toBe(true);
+    });
+
+    it('should allow STOP_REQUESTED (can stop while paused)', () => {
+      expect(isValidTransition('PAUSED', 'STOP_REQUESTED')).toBe(true);
+    });
+
+    it('should allow STREAM_ENDED (external stop while paused)', () => {
+      expect(isValidTransition('PAUSED', 'STREAM_ENDED')).toBe(true);
+    });
+
+    it('should allow CAPTURE_FAILED', () => {
+      expect(isValidTransition('PAUSED', 'CAPTURE_FAILED')).toBe(true);
+    });
+
+    it('should allow FORCE_RESET', () => {
+      expect(isValidTransition('PAUSED', 'FORCE_RESET')).toBe(true);
+    });
+
+    it('should reject PAUSE_REQUESTED (already paused)', () => {
+      expect(isValidTransition('PAUSED', 'PAUSE_REQUESTED')).toBe(false);
+    });
+
+    it('should reject START_REQUESTED', () => {
+      expect(isValidTransition('PAUSED', 'START_REQUESTED')).toBe(false);
+    });
+
+    it('should reject CAPTURE_STARTED', () => {
+      expect(isValidTransition('PAUSED', 'CAPTURE_STARTED')).toBe(false);
     });
   });
 
@@ -139,6 +181,7 @@ describe('isValidTransition', () => {
       'REQUESTING_PERMISSION',
       'STARTING',
       'RECORDING',
+      'PAUSED',
       'STOPPING',
       'UPLOADING',
     ];
@@ -146,6 +189,42 @@ describe('isValidTransition', () => {
     it.each(allStates)('should allow FORCE_RESET from %s', (state) => {
       expect(isValidTransition(state, 'FORCE_RESET')).toBe(true);
     });
+  });
+
+  describe('PAUSE_REQUESTED only valid from RECORDING', () => {
+    const nonRecordingStates: SessionState[] = [
+      'IDLE',
+      'REQUESTING_PERMISSION',
+      'STARTING',
+      'PAUSED',
+      'STOPPING',
+      'UPLOADING',
+    ];
+
+    it.each(nonRecordingStates)(
+      'should reject PAUSE_REQUESTED from %s',
+      (state) => {
+        expect(isValidTransition(state, 'PAUSE_REQUESTED')).toBe(false);
+      }
+    );
+  });
+
+  describe('RESUME_REQUESTED only valid from PAUSED', () => {
+    const nonPausedStates: SessionState[] = [
+      'IDLE',
+      'REQUESTING_PERMISSION',
+      'STARTING',
+      'RECORDING',
+      'STOPPING',
+      'UPLOADING',
+    ];
+
+    it.each(nonPausedStates)(
+      'should reject RESUME_REQUESTED from %s',
+      (state) => {
+        expect(isValidTransition(state, 'RESUME_REQUESTED')).toBe(false);
+      }
+    );
   });
 });
 
@@ -182,10 +261,33 @@ describe('getNextState', () => {
     expect(getNextState('UPLOADING', 'UPLOAD_COMPLETE')).toBe('IDLE');
   });
 
+  // Pause/resume transitions
+  it('should return PAUSED for RECORDING + PAUSE_REQUESTED', () => {
+    expect(getNextState('RECORDING', 'PAUSE_REQUESTED')).toBe('PAUSED');
+  });
+
+  it('should return RECORDING for PAUSED + RESUME_REQUESTED', () => {
+    expect(getNextState('PAUSED', 'RESUME_REQUESTED')).toBe('RECORDING');
+  });
+
+  it('should return STOPPING for PAUSED + STOP_REQUESTED (stop while paused)', () => {
+    expect(getNextState('PAUSED', 'STOP_REQUESTED')).toBe('STOPPING');
+  });
+
+  it('should return UPLOADING for PAUSED + STREAM_ENDED (external stop while paused)', () => {
+    expect(getNextState('PAUSED', 'STREAM_ENDED')).toBe('UPLOADING');
+  });
+
+  it('should return IDLE for PAUSED + CAPTURE_FAILED', () => {
+    expect(getNextState('PAUSED', 'CAPTURE_FAILED')).toBe('IDLE');
+  });
+
   it('should return null for invalid transitions', () => {
     expect(getNextState('IDLE', 'CAPTURE_STARTED')).toBe(null);
     expect(getNextState('RECORDING', 'PERMISSION_GRANTED')).toBe(null);
     expect(getNextState('UPLOADING', 'STOP_REQUESTED')).toBe(null);
+    expect(getNextState('PAUSED', 'PAUSE_REQUESTED')).toBe(null); // Already paused
+    expect(getNextState('RECORDING', 'RESUME_REQUESTED')).toBe(null); // Already recording
   });
 });
 
@@ -205,6 +307,8 @@ describe('isTerminalEvent', () => {
     expect(isTerminalEvent('STOP_REQUESTED')).toBe(false);
     expect(isTerminalEvent('CAPTURE_STOPPED')).toBe(false);
     expect(isTerminalEvent('STREAM_ENDED')).toBe(false); // Goes to UPLOADING, not IDLE
+    expect(isTerminalEvent('PAUSE_REQUESTED')).toBe(false); // Goes to PAUSED
+    expect(isTerminalEvent('RESUME_REQUESTED')).toBe(false); // Goes to RECORDING
   });
 });
 
@@ -253,6 +357,7 @@ describe('transition table completeness', () => {
       'REQUESTING_PERMISSION',
       'STARTING',
       'RECORDING',
+      'PAUSED',
       'STOPPING',
       'UPLOADING',
     ];
@@ -265,5 +370,25 @@ describe('transition table completeness', () => {
 
       expect(hasPathToIdle).toBe(true);
     }
+  });
+
+  it('should allow bidirectional pause/resume between RECORDING and PAUSED', () => {
+    // RECORDING -> PAUSED
+    expect(getNextState('RECORDING', 'PAUSE_REQUESTED')).toBe('PAUSED');
+    // PAUSED -> RECORDING
+    expect(getNextState('PAUSED', 'RESUME_REQUESTED')).toBe('RECORDING');
+  });
+
+  it('should handle all exit paths from PAUSED state', () => {
+    // Normal resume
+    expect(getNextState('PAUSED', 'RESUME_REQUESTED')).toBe('RECORDING');
+    // User stop while paused
+    expect(getNextState('PAUSED', 'STOP_REQUESTED')).toBe('STOPPING');
+    // External stop while paused (Stop sharing button)
+    expect(getNextState('PAUSED', 'STREAM_ENDED')).toBe('UPLOADING');
+    // Error while paused
+    expect(getNextState('PAUSED', 'CAPTURE_FAILED')).toBe('IDLE');
+    // Force reset
+    expect(getNextState('PAUSED', 'FORCE_RESET')).toBe('IDLE');
   });
 });

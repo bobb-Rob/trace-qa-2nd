@@ -11,6 +11,8 @@ import {
   type OffscreenCaptureCompletePayload,
   type OffscreenStreamEndedPayload,
   type OffscreenErrorPayload,
+  type ContentShowFloatingPanePayload,
+  type UpdateFloatingPanePayload,
 } from '../shared/types';
 
 import {
@@ -29,6 +31,263 @@ import {
 } from './fsm';
 
 console.log('[TraceQA] Background service worker started');
+
+// State broadcast configuration
+const STATE_BROADCAST_INTERVAL_MS = 500;
+let stateBroadcastTimer: ReturnType<typeof setInterval> | null = null;
+
+// Track the tab ID for content script communication (TAB recording mode)
+let recordingTabId: number | null = null;
+
+/**
+ * Calculate the effective recording duration (excluding paused time).
+ */
+function calculateEffectiveDuration(): number {
+  const ctx = getContext();
+
+  if (ctx.recordingStartTime === null) {
+    return 0;
+  }
+
+  const now = Date.now();
+  const totalElapsed = now - ctx.recordingStartTime;
+
+  // Subtract total paused time
+  let pausedTime = ctx.totalPausedTime;
+
+  // If currently paused, add the current pause duration
+  if (ctx.pauseStartTime !== null) {
+    pausedTime += now - ctx.pauseStartTime;
+  }
+
+  return Math.max(0, totalElapsed - pausedTime);
+}
+
+/**
+ * Broadcast current state to all UI components (popup, floating pane).
+ * Sent periodically during active recording.
+ */
+function broadcastStateUpdate(): void {
+  const ctx = getContext();
+
+  // Only broadcast during active recording states
+  if (ctx.state !== 'RECORDING' && ctx.state !== 'PAUSED') {
+    return;
+  }
+
+  if (!ctx.sessionId) {
+    return;
+  }
+
+  const duration = calculateEffectiveDuration();
+  const isPaused = ctx.state === 'PAUSED';
+
+  // Broadcast to popup and other extension pages
+  chrome.runtime.sendMessage({
+    type: 'UI_STATE_UPDATE',
+    payload: {
+      sessionId: ctx.sessionId,
+      sessionState: ctx.state,
+      isPaused,
+      duration,
+    },
+  }).catch(() => {
+    // Ignore errors if no listeners (popup might be closed)
+  });
+
+  // Update FloatingPane in content script (TAB mode only)
+  if (recordingTabId !== null) {
+    updateFloatingPane(recordingTabId, {
+      isPaused,
+      duration,
+    });
+  }
+}
+
+/**
+ * Start broadcasting state updates at regular intervals.
+ */
+function startStateBroadcast(): void {
+  if (stateBroadcastTimer !== null) {
+    return; // Already running
+  }
+
+  console.log('[TraceQA] Starting state broadcast');
+  stateBroadcastTimer = setInterval(broadcastStateUpdate, STATE_BROADCAST_INTERVAL_MS);
+
+  // Send an immediate update
+  broadcastStateUpdate();
+}
+
+/**
+ * Stop broadcasting state updates.
+ */
+function stopStateBroadcast(): void {
+  if (stateBroadcastTimer !== null) {
+    console.log('[TraceQA] Stopping state broadcast');
+    clearInterval(stateBroadcastTimer);
+    stateBroadcastTimer = null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Content Script Injection (Handshake-based, deterministic)
+// ─────────────────────────────────────────────────────────────
+
+// Timeout for waiting for CONTENT_SCRIPT_READY after injection
+const INJECTION_READY_TIMEOUT_MS = 5000;
+
+// Track tabs with confirmed content script presence (reset on extension reload)
+const confirmedTabs = new Set<number>();
+
+/**
+ * Ensure content script is injected and ready in the target tab.
+ * Uses a deterministic handshake:
+ * 1. PING to check if already loaded (fast path)
+ * 2. If not, inject via chrome.scripting.executeScript()
+ * 3. Wait for CONTENT_SCRIPT_READY signal (no arbitrary delays)
+ *
+ * @returns true if content script is confirmed ready, false if injection failed
+ */
+async function ensureContentScriptInjected(tabId: number): Promise<boolean> {
+  // Fast path: already confirmed in this session
+  if (confirmedTabs.has(tabId)) {
+    return true;
+  }
+
+  // Try PING first (content script may already be loaded)
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, { type: 'PING' });
+    if (response?.type === 'PONG') {
+      console.log('[TraceQA:Injection] Content script already present in tab:', tabId);
+      confirmedTabs.add(tabId);
+      return true;
+    }
+  } catch {
+    // PING failed - content script not loaded, proceed to injection
+    console.log('[TraceQA:Injection] PING failed, injecting content script into tab:', tabId);
+  }
+
+  // Inject content script and wait for READY signal
+  return new Promise<boolean>((resolve) => {
+    let resolved = false;
+
+    // One-shot listener for CONTENT_SCRIPT_READY
+    const readyListener = (
+      message: { type: string },
+      sender: chrome.runtime.MessageSender
+    ) => {
+      if (
+        message.type === 'CONTENT_SCRIPT_READY' &&
+        sender.tab?.id === tabId &&
+        !resolved
+      ) {
+        resolved = true;
+        chrome.runtime.onMessage.removeListener(readyListener);
+        clearTimeout(timeoutId);
+        console.log('[TraceQA:Injection] Content script ready in tab:', tabId);
+        confirmedTabs.add(tabId);
+        resolve(true);
+      }
+    };
+
+    // Timeout handler
+    const timeoutId = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        chrome.runtime.onMessage.removeListener(readyListener);
+        console.warn('[TraceQA:Injection] Timeout waiting for CONTENT_SCRIPT_READY in tab:', tabId);
+        resolve(false);
+      }
+    }, INJECTION_READY_TIMEOUT_MS);
+
+    // Register listener before injection
+    chrome.runtime.onMessage.addListener(readyListener);
+
+    // Inject the content script
+    chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content/index.js'],
+    }).catch((error) => {
+      if (!resolved) {
+        resolved = true;
+        chrome.runtime.onMessage.removeListener(readyListener);
+        clearTimeout(timeoutId);
+        console.error('[TraceQA:Injection] Failed to inject content script:', error);
+        resolve(false);
+      }
+    });
+  });
+}
+
+/**
+ * Remove tab from confirmed set when tab is closed or navigated.
+ */
+chrome.tabs.onRemoved.addListener((tabId) => {
+  confirmedTabs.delete(tabId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  // Clear confirmation on navigation (content script may be unloaded)
+  if (changeInfo.status === 'loading') {
+    confirmedTabs.delete(tabId);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// FloatingPane Control (Content Script Communication)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Show the FloatingPane in the content script for TAB recording mode.
+ * Ensures content script is injected before sending message.
+ */
+async function showFloatingPane(tabId: number, payload: ContentShowFloatingPanePayload): Promise<void> {
+  // Ensure content script is present
+  const ready = await ensureContentScriptInjected(tabId);
+  if (!ready) {
+    console.warn('[TraceQA] Cannot show FloatingPane - content script injection failed');
+    return;
+  }
+
+  try {
+    await chrome.tabs.sendMessage(tabId, {
+      type: 'CONTENT_SHOW_FLOATING_PANE',
+      payload,
+    });
+    console.log('[TraceQA] FloatingPane shown in tab:', tabId);
+  } catch (error) {
+    console.warn('[TraceQA] Failed to show FloatingPane:', error);
+  }
+}
+
+/**
+ * Update the FloatingPane state in the content script.
+ */
+async function updateFloatingPane(tabId: number, payload: UpdateFloatingPanePayload): Promise<void> {
+  try {
+    await chrome.tabs.sendMessage(tabId, {
+      type: 'CONTENT_UPDATE_FLOATING_PANE',
+      payload,
+    });
+  } catch {
+    // Ignore errors - tab might be closed or content script not loaded
+  }
+}
+
+/**
+ * Hide the FloatingPane in the content script.
+ */
+async function hideFloatingPane(tabId: number): Promise<void> {
+  try {
+    await chrome.tabs.sendMessage(tabId, {
+      type: 'CONTENT_HIDE_FLOATING_PANE',
+    });
+    console.log('[TraceQA] FloatingPane hidden in tab:', tabId);
+  } catch {
+    // Ignore errors - tab might be closed or content script not loaded
+  }
+}
 
 // Offscreen document management
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen/index.html';
@@ -80,14 +339,28 @@ function broadcastSessionEnded(
 async function finalizeSession(error?: string): Promise<void> {
   console.log('[TraceQA] Finalizing session', error ? `(error: ${error})` : '(success)');
 
+  // Stop state broadcast immediately
+  stopStateBroadcast();
+
+  // Hide FloatingPane if showing (TAB mode)
+  if (recordingTabId !== null) {
+    await hideFloatingPane(recordingTabId);
+    recordingTabId = null;
+  }
+
   try {
     // Always close offscreen document first (best effort)
     await closeOffscreenDocument().catch((e) => {
       console.warn('[TraceQA] Failed to close offscreen document:', e);
     });
   } finally {
-    // Reset context
-    updateContext({ sessionId: null, recordingStartTime: null });
+    // Reset context (including pause timing)
+    updateContext({
+      sessionId: null,
+      recordingStartTime: null,
+      pauseStartTime: null,
+      totalPausedTime: 0,
+    });
 
     // Persist cleanup state
     await chrome.storage.local.set({
@@ -95,6 +368,8 @@ async function finalizeSession(error?: string): Promise<void> {
       sessionId: null,
       startTime: null,
       lastError: error ?? null,
+      fsmPauseStartTime: null,
+      fsmTotalPausedTime: 0,
     });
   }
 }
@@ -141,6 +416,53 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       handleDownloadComplete(message.payload);
       return false;
 
+    // Pause/resume messages from UI (popup, floating pane)
+    case 'UI_PAUSE_REQUESTED':
+      handlePauseRequested(message.payload, sendResponse);
+      return true;
+
+    case 'UI_RESUME_REQUESTED':
+      handleResumeRequested(message.payload, sendResponse);
+      return true;
+
+    // Pause/resume acknowledgments from offscreen
+    case 'OFFSCREEN_PAUSED':
+      handleOffscreenPaused(message.payload);
+      return false;
+
+    case 'OFFSCREEN_RESUMED':
+      handleOffscreenResumed(message.payload);
+      return false;
+
+    // Messages from content script (FloatingPane actions)
+    case 'FLOATING_PANE_PAUSE':
+      handlePauseRequested(message.payload, sendResponse);
+      return true;
+
+    case 'FLOATING_PANE_RESUME':
+      handleResumeRequested(message.payload, sendResponse);
+      return true;
+
+    case 'FLOATING_PANE_STOP':
+      handleStopRecording(message.payload, sendResponse);
+      return true;
+
+    case 'FLOATING_PANE_TOGGLE_MUTE':
+      handleToggleMute(message.payload, sendResponse);
+      return true;
+
+    case 'FLOATING_PANE_POSITION_CHANGED':
+      // Position changes are handled by the content script itself (saves to storage)
+      // No action needed in background
+      sendResponse({ success: true });
+      return false;
+
+    // Content script injection handshake
+    // Note: Also handled by one-shot listener in ensureContentScriptInjected()
+    case 'CONTENT_SCRIPT_READY':
+      // Acknowledge silently - the one-shot listener handles the actual handshake
+      return false;
+
     default:
       sendResponse({ success: false, error: 'Unknown message type' });
       return false;
@@ -165,6 +487,13 @@ async function handleStartRecording(
     if (getState() !== 'IDLE') {
       sendResponse({ success: false, error: 'Already recording or busy' });
       return;
+    }
+
+    // Store tab ID for TAB recording mode (used for FloatingPane)
+    if (payload.videoConfig.captureMode === 'TAB') {
+      recordingTabId = payload.tabId;
+    } else {
+      recordingTabId = null; // DESKTOP/WINDOW modes don't use content script
     }
 
     // Update context with session info
@@ -226,7 +555,8 @@ async function handleStopRecording(
 
     const ctx = getContext();
 
-    if (ctx.state !== 'RECORDING') {
+    // Can stop from RECORDING or PAUSED state
+    if (ctx.state !== 'RECORDING' && ctx.state !== 'PAUSED') {
       sendResponse({ success: false, error: 'Not recording' });
       return;
     }
@@ -236,7 +566,7 @@ async function handleStopRecording(
       return;
     }
 
-    // Transition: RECORDING -> STOPPING
+    // Transition: RECORDING/PAUSED -> STOPPING
     await transition({ type: 'STOP_REQUESTED' }, 'User clicked stop');
 
     // Persist state
@@ -259,6 +589,176 @@ async function handleStopRecording(
       error: errorMessage,
     });
   }
+}
+
+/**
+ * Handle pause request from UI.
+ * Validates state and forwards to offscreen for MediaRecorder.pause()
+ */
+async function handlePauseRequested(
+  payload: { sessionId: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    console.log('[TraceQA] Pause requested:', payload.sessionId);
+
+    const ctx = getContext();
+
+    // Can only pause from RECORDING state
+    if (ctx.state !== 'RECORDING') {
+      sendResponse({ success: false, error: 'Not recording (cannot pause)' });
+      return;
+    }
+
+    if (payload.sessionId !== ctx.sessionId) {
+      sendResponse({ success: false, error: 'Session mismatch' });
+      return;
+    }
+
+    // Tell offscreen to pause the MediaRecorder
+    chrome.runtime.sendMessage({
+      type: 'OFFSCREEN_PAUSE_RECORDING',
+      payload: { sessionId: payload.sessionId },
+    });
+
+    // Response is immediate - actual PAUSED state comes via OFFSCREEN_PAUSED
+    sendResponse({ success: true, message: 'Pause initiated' });
+  } catch (error) {
+    console.error('[TraceQA] Pause error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
+/**
+ * Handle resume request from UI.
+ * Validates state and forwards to offscreen for MediaRecorder.resume()
+ */
+async function handleResumeRequested(
+  payload: { sessionId: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    console.log('[TraceQA] Resume requested:', payload.sessionId);
+
+    const ctx = getContext();
+
+    // Can only resume from PAUSED state
+    if (ctx.state !== 'PAUSED') {
+      sendResponse({ success: false, error: 'Not paused (cannot resume)' });
+      return;
+    }
+
+    if (payload.sessionId !== ctx.sessionId) {
+      sendResponse({ success: false, error: 'Session mismatch' });
+      return;
+    }
+
+    // Tell offscreen to resume the MediaRecorder
+    chrome.runtime.sendMessage({
+      type: 'OFFSCREEN_RESUME_RECORDING',
+      payload: { sessionId: payload.sessionId },
+    });
+
+    // Response is immediate - actual RECORDING state comes via OFFSCREEN_RESUMED
+    sendResponse({ success: true, message: 'Resume initiated' });
+  } catch (error) {
+    console.error('[TraceQA] Resume error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
+/**
+ * Handle pause confirmation from offscreen.
+ * Transition FSM to PAUSED and track pause timing.
+ */
+async function handleOffscreenPaused(payload: { sessionId: string }): Promise<void> {
+  // Validate message freshness
+  if (!isMessageFresh(payload.sessionId)) {
+    console.warn('[TraceQA] Ignoring stale OFFSCREEN_PAUSED message');
+    return;
+  }
+
+  console.log('[TraceQA] Pause confirmed:', payload.sessionId);
+
+  // Transition: RECORDING -> PAUSED
+  await transition({ type: 'PAUSE_REQUESTED' }, 'MediaRecorder paused');
+
+  // Track when pause started for duration calculation
+  const pauseStartTime = Date.now();
+  updateContext({ pauseStartTime });
+
+  // Persist pause timing to storage
+  await chrome.storage.local.set({ fsmPauseStartTime: pauseStartTime });
+}
+
+/**
+ * Handle mute toggle request from FloatingPane.
+ * TODO: Implement actual mute functionality via offscreen document.
+ */
+async function handleToggleMute(
+  payload: { sessionId: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  console.log('[TraceQA] Toggle mute requested:', payload.sessionId);
+
+  const ctx = getContext();
+
+  // Can only toggle mute during recording or paused states
+  if (ctx.state !== 'RECORDING' && ctx.state !== 'PAUSED') {
+    sendResponse({ success: false, error: 'Not recording (cannot toggle mute)' });
+    return;
+  }
+
+  if (payload.sessionId !== ctx.sessionId) {
+    sendResponse({ success: false, error: 'Session mismatch' });
+    return;
+  }
+
+  // TODO: Send message to offscreen to toggle audio track
+  // For now, just acknowledge the request
+  console.warn('[TraceQA] Mute toggle not yet implemented');
+  sendResponse({ success: true, message: 'Mute toggle acknowledged (not implemented)' });
+}
+
+/**
+ * Handle resume confirmation from offscreen.
+ * Transition FSM back to RECORDING and accumulate paused time.
+ */
+async function handleOffscreenResumed(payload: { sessionId: string }): Promise<void> {
+  // Validate message freshness
+  if (!isMessageFresh(payload.sessionId)) {
+    console.warn('[TraceQA] Ignoring stale OFFSCREEN_RESUMED message');
+    return;
+  }
+
+  console.log('[TraceQA] Resume confirmed:', payload.sessionId);
+
+  const ctx = getContext();
+
+  // Calculate how long we were paused and add to total
+  if (ctx.pauseStartTime !== null) {
+    const pauseDuration = Date.now() - ctx.pauseStartTime;
+    const newTotalPausedTime = ctx.totalPausedTime + pauseDuration;
+    updateContext({
+      pauseStartTime: null,
+      totalPausedTime: newTotalPausedTime,
+    });
+
+    // Persist updated pause timing to storage
+    await chrome.storage.local.set({
+      fsmPauseStartTime: null,
+      fsmTotalPausedTime: newTotalPausedTime,
+    });
+  }
+
+  // Transition: PAUSED -> RECORDING
+  await transition({ type: 'RESUME_REQUESTED' }, 'MediaRecorder resumed');
 }
 
 /**
@@ -286,6 +786,20 @@ async function handleCaptureStarted(payload: { sessionId: string }): Promise<voi
     isRecording: true,
     startTime,
   });
+
+  // Start broadcasting state updates to UI
+  startStateBroadcast();
+
+  // Show FloatingPane for TAB recording mode
+  if (recordingTabId !== null) {
+    await showFloatingPane(recordingTabId, {
+      sessionId: payload.sessionId,
+      isPaused: false,
+      isMuted: false, // TODO: Track actual mute state
+      duration: 0,
+      canPause: true, // Pause is now implemented
+    });
+  }
 }
 
 async function handleCaptureComplete(payload: OffscreenCaptureCompletePayload): Promise<void> {

@@ -73,6 +73,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       handleStopCapture(message.payload, sendResponse);
       return true;
 
+    case 'OFFSCREEN_PAUSE_RECORDING':
+      handlePauseRecording(message.payload, sendResponse);
+      return true;
+
+    case 'OFFSCREEN_RESUME_RECORDING':
+      handleResumeRecording(message.payload, sendResponse);
+      return true;
+
     case 'OFFSCREEN_DOWNLOAD_BLOB':
       handleDownloadBlob(message.payload, sendResponse);
       return true;
@@ -322,6 +330,84 @@ async function handleStopCapture(
   } catch (error) {
     console.error('[TraceQA:Offscreen] Stop capture error:', error);
     stopRequested = false; // Reset on error
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
+/**
+ * Handle pause request from background.
+ * Pauses the MediaRecorder, which stops data accumulation but keeps stream alive.
+ */
+async function handlePauseRecording(
+  payload: { sessionId: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (!mediaRecorder || payload.sessionId !== currentSessionId) {
+      sendResponse({ success: false, error: 'No matching recording' });
+      return;
+    }
+
+    if (mediaRecorder.state !== 'recording') {
+      sendResponse({ success: false, error: 'Not currently recording' });
+      return;
+    }
+
+    // Pause the MediaRecorder
+    mediaRecorder.pause();
+    console.log('[TraceQA:Offscreen] MediaRecorder paused');
+
+    // Notify background that pause succeeded
+    chrome.runtime.sendMessage({
+      type: 'OFFSCREEN_PAUSED',
+      payload: { sessionId: currentSessionId },
+    });
+
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('[TraceQA:Offscreen] Pause recording error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
+/**
+ * Handle resume request from background.
+ * Resumes the MediaRecorder, which continues data accumulation.
+ */
+async function handleResumeRecording(
+  payload: { sessionId: string },
+  sendResponse: (response: unknown) => void
+): Promise<void> {
+  try {
+    if (!mediaRecorder || payload.sessionId !== currentSessionId) {
+      sendResponse({ success: false, error: 'No matching recording' });
+      return;
+    }
+
+    if (mediaRecorder.state !== 'paused') {
+      sendResponse({ success: false, error: 'Not currently paused' });
+      return;
+    }
+
+    // Resume the MediaRecorder
+    mediaRecorder.resume();
+    console.log('[TraceQA:Offscreen] MediaRecorder resumed');
+
+    // Notify background that resume succeeded
+    chrome.runtime.sendMessage({
+      type: 'OFFSCREEN_RESUMED',
+      payload: { sessionId: currentSessionId },
+    });
+
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('[TraceQA:Offscreen] Resume recording error:', error);
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

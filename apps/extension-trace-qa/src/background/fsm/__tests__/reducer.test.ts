@@ -33,6 +33,24 @@ describe('reduce (pure function)', () => {
     });
   });
 
+  describe('pause/resume transitions', () => {
+    it('should transition RECORDING -> PAUSED on PAUSE_REQUESTED', () => {
+      expect(reduce('RECORDING', { type: 'PAUSE_REQUESTED' })).toBe('PAUSED');
+    });
+
+    it('should transition PAUSED -> RECORDING on RESUME_REQUESTED', () => {
+      expect(reduce('PAUSED', { type: 'RESUME_REQUESTED' })).toBe('RECORDING');
+    });
+
+    it('should transition PAUSED -> STOPPING on STOP_REQUESTED', () => {
+      expect(reduce('PAUSED', { type: 'STOP_REQUESTED' })).toBe('STOPPING');
+    });
+
+    it('should transition PAUSED -> UPLOADING on STREAM_ENDED (external stop)', () => {
+      expect(reduce('PAUSED', { type: 'STREAM_ENDED' })).toBe('UPLOADING');
+    });
+  });
+
   describe('error path transitions (all lead to IDLE)', () => {
     it('should transition REQUESTING_PERMISSION -> IDLE on PERMISSION_DENIED', () => {
       expect(reduce('REQUESTING_PERMISSION', { type: 'PERMISSION_DENIED' })).toBe('IDLE');
@@ -53,6 +71,10 @@ describe('reduce (pure function)', () => {
     it('should transition UPLOADING -> IDLE on UPLOAD_FAILED', () => {
       expect(reduce('UPLOADING', { type: 'UPLOAD_FAILED' })).toBe('IDLE');
     });
+
+    it('should transition PAUSED -> IDLE on CAPTURE_FAILED', () => {
+      expect(reduce('PAUSED', { type: 'CAPTURE_FAILED' })).toBe('IDLE');
+    });
   });
 
   describe('FORCE_RESET transitions (all lead to IDLE)', () => {
@@ -61,6 +83,7 @@ describe('reduce (pure function)', () => {
       'REQUESTING_PERMISSION',
       'STARTING',
       'RECORDING',
+      'PAUSED',
       'STOPPING',
       'UPLOADING',
     ];
@@ -99,8 +122,33 @@ describe('reduce (pure function)', () => {
       expect(reduce('IDLE', { type: 'STREAM_ENDED' })).toBe('IDLE');
     });
 
-    it('should return STOPPING for STOPPING + STREAM_ENDED (only valid from RECORDING)', () => {
+    it('should return STOPPING for STOPPING + STREAM_ENDED (only valid from RECORDING/PAUSED)', () => {
       expect(reduce('STOPPING', { type: 'STREAM_ENDED' })).toBe('STOPPING');
+    });
+
+    // Pause/resume invalid transitions
+    it('should return PAUSED for PAUSED + PAUSE_REQUESTED (already paused)', () => {
+      expect(reduce('PAUSED', { type: 'PAUSE_REQUESTED' })).toBe('PAUSED');
+    });
+
+    it('should return RECORDING for RECORDING + RESUME_REQUESTED (already recording)', () => {
+      expect(reduce('RECORDING', { type: 'RESUME_REQUESTED' })).toBe('RECORDING');
+    });
+
+    it('should return IDLE for IDLE + PAUSE_REQUESTED', () => {
+      expect(reduce('IDLE', { type: 'PAUSE_REQUESTED' })).toBe('IDLE');
+    });
+
+    it('should return IDLE for IDLE + RESUME_REQUESTED', () => {
+      expect(reduce('IDLE', { type: 'RESUME_REQUESTED' })).toBe('IDLE');
+    });
+
+    it('should return STOPPING for STOPPING + PAUSE_REQUESTED', () => {
+      expect(reduce('STOPPING', { type: 'PAUSE_REQUESTED' })).toBe('STOPPING');
+    });
+
+    it('should return UPLOADING for UPLOADING + RESUME_REQUESTED', () => {
+      expect(reduce('UPLOADING', { type: 'RESUME_REQUESTED' })).toBe('UPLOADING');
     });
   });
 
@@ -168,5 +216,22 @@ describe('reduceStrict', () => {
 
   it('should work for FORCE_RESET', () => {
     expect(reduceStrict('STOPPING', { type: 'FORCE_RESET' })).toBe('IDLE');
+  });
+
+  it('should work for pause/resume transitions', () => {
+    expect(reduceStrict('RECORDING', { type: 'PAUSE_REQUESTED' })).toBe('PAUSED');
+    expect(reduceStrict('PAUSED', { type: 'RESUME_REQUESTED' })).toBe('RECORDING');
+  });
+
+  it('should throw for invalid pause from PAUSED', () => {
+    expect(() => reduceStrict('PAUSED', { type: 'PAUSE_REQUESTED' })).toThrow(
+      /PAUSED \+ PAUSE_REQUESTED/
+    );
+  });
+
+  it('should throw for invalid resume from RECORDING', () => {
+    expect(() => reduceStrict('RECORDING', { type: 'RESUME_REQUESTED' })).toThrow(
+      /RECORDING \+ RESUME_REQUESTED/
+    );
   });
 });

@@ -11,12 +11,20 @@
     "service_worker": "background/index.js",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/index.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "permissions": [
     "storage",
     "activeTab",
     "tabs",
     "offscreen",
-    "downloads"
+    "downloads",
+    "scripting"
   ],
   "host_permissions": [
     "<all_urls>"

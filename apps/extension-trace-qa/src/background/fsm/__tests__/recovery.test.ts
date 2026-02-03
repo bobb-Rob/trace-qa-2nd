@@ -9,6 +9,7 @@ describe('recovery guarantees', () => {
     'REQUESTING_PERMISSION',
     'STARTING',
     'RECORDING',
+    'PAUSED',
     'STOPPING',
     'UPLOADING',
   ];
@@ -96,6 +97,80 @@ describe('recovery guarantees', () => {
       state = reduce(state, { type: 'UPLOAD_COMPLETE' });
       expect(state).toBe('IDLE');
     });
+
+    it('should complete full cycle with pause/resume: IDLE -> ... -> PAUSED -> ... -> IDLE', () => {
+      let state: SessionState = 'IDLE';
+
+      state = reduce(state, { type: 'START_REQUESTED' });
+      expect(state).toBe('REQUESTING_PERMISSION');
+
+      state = reduce(state, { type: 'PERMISSION_GRANTED' });
+      expect(state).toBe('STARTING');
+
+      state = reduce(state, { type: 'CAPTURE_STARTED' });
+      expect(state).toBe('RECORDING');
+
+      // Pause recording
+      state = reduce(state, { type: 'PAUSE_REQUESTED' });
+      expect(state).toBe('PAUSED');
+
+      // Resume recording
+      state = reduce(state, { type: 'RESUME_REQUESTED' });
+      expect(state).toBe('RECORDING');
+
+      // Can pause/resume multiple times
+      state = reduce(state, { type: 'PAUSE_REQUESTED' });
+      expect(state).toBe('PAUSED');
+
+      state = reduce(state, { type: 'RESUME_REQUESTED' });
+      expect(state).toBe('RECORDING');
+
+      state = reduce(state, { type: 'STOP_REQUESTED' });
+      expect(state).toBe('STOPPING');
+
+      state = reduce(state, { type: 'CAPTURE_STOPPED' });
+      expect(state).toBe('UPLOADING');
+
+      state = reduce(state, { type: 'UPLOAD_COMPLETE' });
+      expect(state).toBe('IDLE');
+    });
+
+    it('should complete stop-while-paused path: IDLE -> ... -> PAUSED -> STOPPING -> IDLE', () => {
+      let state: SessionState = 'IDLE';
+
+      state = reduce(state, { type: 'START_REQUESTED' });
+      state = reduce(state, { type: 'PERMISSION_GRANTED' });
+      state = reduce(state, { type: 'CAPTURE_STARTED' });
+      state = reduce(state, { type: 'PAUSE_REQUESTED' });
+      expect(state).toBe('PAUSED');
+
+      // Stop while paused
+      state = reduce(state, { type: 'STOP_REQUESTED' });
+      expect(state).toBe('STOPPING');
+
+      state = reduce(state, { type: 'CAPTURE_STOPPED' });
+      expect(state).toBe('UPLOADING');
+
+      state = reduce(state, { type: 'UPLOAD_COMPLETE' });
+      expect(state).toBe('IDLE');
+    });
+
+    it('should complete external-stop-while-paused path: IDLE -> ... -> PAUSED -> UPLOADING -> IDLE', () => {
+      let state: SessionState = 'IDLE';
+
+      state = reduce(state, { type: 'START_REQUESTED' });
+      state = reduce(state, { type: 'PERMISSION_GRANTED' });
+      state = reduce(state, { type: 'CAPTURE_STARTED' });
+      state = reduce(state, { type: 'PAUSE_REQUESTED' });
+      expect(state).toBe('PAUSED');
+
+      // External stop while paused (user clicks "Stop sharing")
+      state = reduce(state, { type: 'STREAM_ENDED' });
+      expect(state).toBe('UPLOADING');
+
+      state = reduce(state, { type: 'UPLOAD_COMPLETE' });
+      expect(state).toBe('IDLE');
+    });
   });
 
   describe('failure at any point recovers to IDLE', () => {
@@ -151,6 +226,18 @@ describe('recovery guarantees', () => {
       expect(state).toBe('UPLOADING');
 
       state = reduce(state, { type: 'UPLOAD_FAILED' });
+      expect(state).toBe('IDLE');
+    });
+
+    it('should recover from PAUSED failure', () => {
+      let state: SessionState = 'IDLE';
+      state = reduce(state, { type: 'START_REQUESTED' });
+      state = reduce(state, { type: 'PERMISSION_GRANTED' });
+      state = reduce(state, { type: 'CAPTURE_STARTED' });
+      state = reduce(state, { type: 'PAUSE_REQUESTED' });
+      expect(state).toBe('PAUSED');
+
+      state = reduce(state, { type: 'CAPTURE_FAILED' });
       expect(state).toBe('IDLE');
     });
   });
@@ -275,6 +362,46 @@ describe('recovery guarantees', () => {
       state = reduce(state, { type: 'FORCE_RESET' });
       expect(state).toBe('IDLE'); // Still IDLE
     });
+
+    it('should handle duplicate PAUSE_REQUESTED gracefully (idempotent)', () => {
+      let state: SessionState = 'RECORDING';
+
+      // First pause
+      state = reduce(state, { type: 'PAUSE_REQUESTED' });
+      expect(state).toBe('PAUSED');
+
+      // Duplicate pause - should be ignored (already paused)
+      state = reduce(state, { type: 'PAUSE_REQUESTED' });
+      expect(state).toBe('PAUSED'); // State unchanged
+    });
+
+    it('should handle duplicate RESUME_REQUESTED gracefully (idempotent)', () => {
+      let state: SessionState = 'PAUSED';
+
+      // First resume
+      state = reduce(state, { type: 'RESUME_REQUESTED' });
+      expect(state).toBe('RECORDING');
+
+      // Duplicate resume - should be ignored (already recording)
+      state = reduce(state, { type: 'RESUME_REQUESTED' });
+      expect(state).toBe('RECORDING'); // State unchanged
+    });
+
+    it('should handle PAUSE_REQUESTED from IDLE gracefully', () => {
+      let state: SessionState = 'IDLE';
+
+      // Pause from IDLE - should be ignored
+      state = reduce(state, { type: 'PAUSE_REQUESTED' });
+      expect(state).toBe('IDLE'); // State unchanged
+    });
+
+    it('should handle RESUME_REQUESTED from IDLE gracefully', () => {
+      let state: SessionState = 'IDLE';
+
+      // Resume from IDLE - should be ignored
+      state = reduce(state, { type: 'RESUME_REQUESTED' });
+      expect(state).toBe('IDLE'); // State unchanged
+    });
   });
 
   describe('state machine invariants', () => {
@@ -299,6 +426,8 @@ describe('recovery guarantees', () => {
         { type: 'STOP_REQUESTED' },
         { type: 'CAPTURE_STOPPED' },
         { type: 'STREAM_ENDED' },
+        { type: 'PAUSE_REQUESTED' },
+        { type: 'RESUME_REQUESTED' },
         { type: 'UPLOAD_COMPLETE' },
         { type: 'UPLOAD_FAILED' },
         { type: 'FORCE_RESET' },

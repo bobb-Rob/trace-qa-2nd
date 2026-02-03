@@ -22,6 +22,7 @@ export type SessionState =
   | 'REQUESTING_PERMISSION'
   | 'STARTING'
   | 'RECORDING'
+  | 'PAUSED'
   | 'STOPPING'
   | 'UPLOADING';
 
@@ -68,11 +69,17 @@ export const RECORDER_CONFIG = {
   },
 } as const;
 
-// Message types for Popup → Background
+// Message types for Popup → Background (and FloatingPane via content script)
 export type PopupToBackgroundMessage =
   | { type: 'START_RECORDING'; payload: StartRecordingPayload }
   | { type: 'STOP_RECORDING'; payload: StopRecordingPayload }
-  | { type: 'GET_RECORDING_STATUS' };
+  | { type: 'GET_RECORDING_STATUS' }
+  | { type: 'UI_PAUSE_REQUESTED'; payload: PauseResumePayload }
+  | { type: 'UI_RESUME_REQUESTED'; payload: PauseResumePayload };
+
+export interface PauseResumePayload {
+  sessionId: string;
+}
 
 export interface StartRecordingPayload {
   sessionId: string;
@@ -87,7 +94,9 @@ export interface StopRecordingPayload {
 // Message types for Background → Offscreen
 export type BackgroundToOffscreenMessage =
   | { type: 'OFFSCREEN_START_CAPTURE'; payload: OffscreenStartPayload }
-  | { type: 'OFFSCREEN_STOP_CAPTURE'; payload: OffscreenStopPayload };
+  | { type: 'OFFSCREEN_STOP_CAPTURE'; payload: OffscreenStopPayload }
+  | { type: 'OFFSCREEN_PAUSE_RECORDING'; payload: OffscreenPauseResumePayload }
+  | { type: 'OFFSCREEN_RESUME_RECORDING'; payload: OffscreenPauseResumePayload };
 
 export interface OffscreenStartPayload {
   sessionId: string;
@@ -102,13 +111,19 @@ export interface OffscreenStopPayload {
   sessionId: string;
 }
 
+export interface OffscreenPauseResumePayload {
+  sessionId: string;
+}
+
 // Message types for Offscreen → Background
 export type OffscreenToBackgroundMessage =
   | { type: 'OFFSCREEN_CAPTURE_STARTED'; payload: { sessionId: string } }
   | { type: 'OFFSCREEN_CAPTURE_COMPLETE'; payload: OffscreenCaptureCompletePayload }
   | { type: 'OFFSCREEN_STREAM_ENDED'; payload: OffscreenStreamEndedPayload } // External stop (Stop sharing)
   | { type: 'OFFSCREEN_CAPTURE_ERROR'; payload: OffscreenErrorPayload }
-  | { type: 'OFFSCREEN_SIZE_WARNING'; payload: { sessionId: string; currentSize: number } };
+  | { type: 'OFFSCREEN_SIZE_WARNING'; payload: { sessionId: string; currentSize: number } }
+  | { type: 'OFFSCREEN_PAUSED'; payload: { sessionId: string } }
+  | { type: 'OFFSCREEN_RESUMED'; payload: { sessionId: string } };
 
 // Payload for external stream termination (user clicked Stop sharing)
 export interface OffscreenStreamEndedPayload {
@@ -146,12 +161,25 @@ export type ErrorCode =
 
 // Message types for Background → Popup (broadcasts)
 export type BackgroundToPopupMessage =
-  | { type: 'UI_SESSION_ENDED'; payload: UISessionEndedPayload };
+  | { type: 'UI_SESSION_ENDED'; payload: UISessionEndedPayload }
+  | { type: 'UI_STATE_UPDATE'; payload: UIStateUpdatePayload };
 
 export interface UISessionEndedPayload {
   sessionId: string;
   reason: 'completed' | 'external_stop' | 'error';
   error?: string;
+}
+
+/**
+ * Periodic state broadcast from background to all UI components.
+ * Sent every ~500ms during active recording.
+ */
+export interface UIStateUpdatePayload {
+  sessionId: string;
+  sessionState: SessionState;
+  isPaused: boolean;
+  duration: number; // Elapsed recording time in ms (excludes paused time)
+  warning?: string | null;
 }
 
 // IndexedDB constants
@@ -160,3 +188,72 @@ export const IDB_CONFIG = {
   DB_VERSION: 1,
   STORE_NAME: 'blobs',
 } as const;
+
+// ─────────────────────────────────────────────────────────────
+// FloatingPane Types (UI-only, intent-driven)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Payload to show the floating pane with initial state.
+ */
+export interface ShowFloatingPanePayload {
+  isPaused: boolean;
+  isMuted: boolean;
+  duration: number;
+  canPause: boolean; // v1: false (stop-only), future: true when pause is implemented
+  audioUnavailable?: boolean;
+  audioUnavailableReason?: AudioUnavailableReason;
+}
+
+/**
+ * Payload to update the floating pane state.
+ */
+export interface UpdateFloatingPanePayload {
+  isPaused?: boolean;
+  isMuted?: boolean;
+  duration?: number;
+  warning?: string | null;
+  audioUnavailable?: boolean;
+  audioUnavailableReason?: AudioUnavailableReason;
+}
+
+/**
+ * Reason why audio capture is unavailable.
+ */
+export type AudioUnavailableReason =
+  | 'permission_denied'
+  | 'no_device'
+  | 'device_in_use'
+  | 'unknown';
+
+// ─────────────────────────────────────────────────────────────
+// Content Script Message Types (Background ↔ ContentScript)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Payload for showing FloatingPane via content script (includes sessionId)
+ */
+export interface ContentShowFloatingPanePayload extends ShowFloatingPanePayload {
+  sessionId: string;
+}
+
+/**
+ * Messages from Background → Content Script (for FloatingPane control)
+ */
+export type BackgroundToContentMessage =
+  | { type: 'PING' }  // Lightweight check if content script is loaded
+  | { type: 'CONTENT_SHOW_FLOATING_PANE'; payload: ContentShowFloatingPanePayload }
+  | { type: 'CONTENT_UPDATE_FLOATING_PANE'; payload: UpdateFloatingPanePayload }
+  | { type: 'CONTENT_HIDE_FLOATING_PANE' };
+
+/**
+ * Messages from Content Script → Background (user intents from FloatingPane)
+ */
+export type ContentToBackgroundMessage =
+  | { type: 'PONG' }  // Response to PING - content script is alive
+  | { type: 'CONTENT_SCRIPT_READY' }  // Sent immediately when content script loads
+  | { type: 'FLOATING_PANE_PAUSE'; payload: { sessionId: string } }
+  | { type: 'FLOATING_PANE_RESUME'; payload: { sessionId: string } }
+  | { type: 'FLOATING_PANE_STOP'; payload: { sessionId: string } }
+  | { type: 'FLOATING_PANE_TOGGLE_MUTE'; payload: { sessionId: string } }
+  | { type: 'FLOATING_PANE_POSITION_CHANGED'; payload: { x: number; y: number } };

@@ -21,6 +21,8 @@ let fsmContext: FSMContext = {
   sessionId: null,
   recordingStartTime: null,
   lastTransition: null,
+  pauseStartTime: null,
+  totalPausedTime: 0,
 };
 
 /**
@@ -161,12 +163,12 @@ export async function transition(
 
 /**
  * Update session context without changing state.
- * Used for setting sessionId, recordingStartTime, etc.
+ * Used for setting sessionId, recordingStartTime, pause timing, etc.
  *
  * @param updates - Partial context updates
  */
 export function updateContext(
-  updates: Partial<Pick<FSMContext, 'sessionId' | 'recordingStartTime'>>
+  updates: Partial<Pick<FSMContext, 'sessionId' | 'recordingStartTime' | 'pauseStartTime' | 'totalPausedTime'>>
 ): void {
   fsmContext = { ...fsmContext, ...updates };
 }
@@ -182,6 +184,8 @@ export function resetContext(): void {
     sessionId: null,
     recordingStartTime: null,
     lastTransition: null,
+    pauseStartTime: null,
+    totalPausedTime: 0,
   };
 }
 
@@ -195,6 +199,8 @@ export async function restoreFromStorage(): Promise<void> {
     'sessionId',
     'startTime',
     'fsmLastTransition',
+    'fsmPauseStartTime',
+    'fsmTotalPausedTime',
   ]);
 
   fsmContext = {
@@ -202,6 +208,8 @@ export async function restoreFromStorage(): Promise<void> {
     sessionId: data.sessionId ?? null,
     recordingStartTime: data.startTime ?? null,
     lastTransition: data.fsmLastTransition ?? null,
+    pauseStartTime: data.fsmPauseStartTime ?? null,
+    totalPausedTime: data.fsmTotalPausedTime ?? 0,
   };
 
   console.log('[TraceQA:FSM] Restored context from storage:', {
