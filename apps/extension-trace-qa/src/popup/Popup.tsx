@@ -49,7 +49,7 @@ export function Popup(): React.ReactElement {
 
       {/* Main Content */}
       <main className="space-y-4">
-        <StatusIndicator isRecording={state.isRecording} />
+        <StatusIndicator isRecording={state.isRecording} isPaused={state.isPaused} />
         <ErrorMessage message={displayError} onDismiss={handleDismissError} />
 
         {!state.isRecording && (
@@ -62,6 +62,7 @@ export function Popup(): React.ReactElement {
 
         <RecordingButton
           isRecording={state.isRecording}
+          isPaused={state.isPaused}
           onStart={handleStart}
           onStop={handleStop}
           isLoading={state.isLoading}
@@ -69,8 +70,9 @@ export function Popup(): React.ReactElement {
         />
 
         <RecordingInfo
-          startTime={state.startTime}
           isVisible={state.isRecording}
+          duration={state.duration}
+          isPaused={state.isPaused}
         />
 
         <button

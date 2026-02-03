@@ -1,9 +1,10 @@
 import React from 'react';
-import { Play, Square } from 'lucide-react';
+import { Play, Square, Pause } from 'lucide-react';
 import { cn } from '@shared/utils/cn';
 
 interface RecordingButtonProps {
   isRecording: boolean;
+  isPaused: boolean;
   onStart: () => void;
   onStop: () => void;
   disabled?: boolean;
@@ -12,6 +13,7 @@ interface RecordingButtonProps {
 
 export function RecordingButton({
   isRecording,
+  isPaused,
   onStart,
   onStop,
   disabled = false,
@@ -22,8 +24,27 @@ export function RecordingButton({
     isRecording ? onStop() : onStart();
   };
 
-  const buttonText = isRecording ? 'Stop Recording' : 'Start Recording';
-  const Icon = isRecording ? Square : Play;
+  const getButtonText = (): string => {
+    if (!isRecording) return 'Start Recording';
+    if (isPaused) return 'Recording Paused';
+    return 'Stop Recording';
+  };
+
+  const getIcon = (): React.ReactElement => {
+    if (!isRecording) return <Play size={20} />;
+    if (isPaused) return <Pause size={20} />;
+    return <Square size={20} />;
+  };
+
+  const getButtonStyles = (): string => {
+    if (!isRecording) {
+      return 'bg-blue-500 hover:bg-blue-600 text-white focus:ring-blue-500';
+    }
+    if (isPaused) {
+      return 'bg-amber-500 hover:bg-amber-600 text-white focus:ring-amber-500';
+    }
+    return 'bg-red-500 hover:bg-red-600 text-white focus:ring-red-500';
+  };
 
   return (
     <button
@@ -36,18 +57,16 @@ export function RecordingButton({
         'py-4 px-4 rounded-lg font-semibold',
         'transition-all duration-200',
         'focus:outline-none focus:ring-2 focus:ring-offset-2',
-        isRecording
-          ? 'bg-red-500 hover:bg-red-600 text-white focus:ring-red-500'
-          : 'bg-blue-500 hover:bg-blue-600 text-white focus:ring-blue-500',
+        getButtonStyles(),
         (disabled || isLoading) && 'opacity-50 cursor-not-allowed'
       )}
     >
       {isLoading ? (
         <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
       ) : (
-        <Icon size={20} />
+        getIcon()
       )}
-      <span className="text-base">{buttonText}</span>
+      <span className="text-base">{getButtonText()}</span>
     </button>
   );
 }

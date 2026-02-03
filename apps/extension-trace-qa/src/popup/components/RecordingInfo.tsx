@@ -1,45 +1,51 @@
-import React, { useState, useEffect } from 'react';
-import { Clock } from 'lucide-react';
+import React from 'react';
+import { Clock, Pause } from 'lucide-react';
+import { cn } from '@shared/utils/cn';
 
 interface RecordingInfoProps {
-  startTime: number | null;
   isVisible: boolean;
+  duration: number; // ms from background (authoritative)
+  isPaused: boolean;
 }
 
 export function RecordingInfo({
-  startTime,
   isVisible,
+  duration,
+  isPaused,
 }: RecordingInfoProps): React.ReactElement | null {
-  const [elapsed, setElapsed] = useState(0);
-
-  useEffect(() => {
-    if (!isVisible || !startTime) {
-      setElapsed(0);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startTime) / 1000));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isVisible, startTime]);
-
   if (!isVisible) return null;
 
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+  const formatTime = (ms: number): string => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
     <div
       data-testid="recording-info"
-      className="flex items-center justify-center gap-2 p-3 bg-red-50 rounded-lg"
+      className={cn(
+        'flex items-center justify-center gap-2 p-3 rounded-lg',
+        isPaused ? 'bg-amber-50' : 'bg-red-50'
+      )}
     >
-      <Clock size={16} className="text-red-500" />
-      <span className="text-sm font-mono text-red-700">{formatTime(elapsed)}</span>
+      {isPaused ? (
+        <Pause size={16} className="text-amber-500" />
+      ) : (
+        <Clock size={16} className="text-red-500" />
+      )}
+      <span
+        className={cn(
+          'text-sm font-mono',
+          isPaused ? 'text-amber-700' : 'text-red-700'
+        )}
+      >
+        {formatTime(duration)}
+      </span>
+      {isPaused && (
+        <span className="text-xs text-amber-600 font-medium ml-1">PAUSED</span>
+      )}
     </div>
   );
 }

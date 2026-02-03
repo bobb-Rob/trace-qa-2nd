@@ -27,6 +27,11 @@ const WATCHDOG_CONFIGS: WatchdogConfig[] = [
     onTimeout: 'STOP_REQUESTED',
   },
   {
+    state: 'PAUSED',
+    timeoutMs: 30 * 60 * 1000, // 30 minutes max pause time (same as recording)
+    onTimeout: 'STOP_REQUESTED', // Auto-stop if paused too long
+  },
+  {
     state: 'STOPPING',
     timeoutMs: 30_000, // 30 seconds to stop and finalize
     onTimeout: 'CAPTURE_FAILED',

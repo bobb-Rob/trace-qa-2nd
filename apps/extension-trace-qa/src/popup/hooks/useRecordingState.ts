@@ -1,8 +1,24 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { RecordingState, VideoRecordingConfig, SessionState, UISessionEndedPayload } from '@shared/types';
+import type { VideoRecordingConfig, SessionState, UISessionEndedPayload, UIStateUpdatePayload } from '@shared/types';
 
-const initialState: RecordingState = {
+/**
+ * Extended recording state for popup UI.
+ * Includes isPaused and duration from background broadcasts.
+ */
+interface PopupRecordingState {
+  isRecording: boolean;
+  isPaused: boolean;
+  duration: number; // ms from background (authoritative)
+  sessionId: string | null;
+  startTime: number | null;
+  error: string | null;
+  isLoading: boolean;
+}
+
+const initialState: PopupRecordingState = {
   isRecording: false,
+  isPaused: false,
+  duration: 0,
   sessionId: null,
   startTime: null,
   error: null,
@@ -51,13 +67,13 @@ const defaultVideoConfig: VideoRecordingConfig = {
 };
 
 export function useRecordingState(): {
-  state: RecordingState;
+  state: PopupRecordingState;
   videoConfig: VideoRecordingConfig;
   setVideoConfig: (config: VideoRecordingConfig) => void;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
 } {
-  const [state, setState] = useState<RecordingState>(initialState);
+  const [state, setState] = useState<PopupRecordingState>(initialState);
   const [videoConfig, setVideoConfigState] = useState<VideoRecordingConfig>(defaultVideoConfig);
 
   useEffect(() => {
@@ -66,6 +82,8 @@ export function useRecordingState(): {
       (result) => {
         setState({
           isRecording: result.isRecording ?? false,
+          isPaused: false,
+          duration: 0,
           sessionId: result.sessionId ?? null,
           startTime: result.startTime ?? null,
           error: null,
@@ -79,20 +97,32 @@ export function useRecordingState(): {
     );
   }, []);
 
-  // Listen for session ended broadcasts from background
+  // Listen for background broadcasts (state updates and session ended)
   useEffect(() => {
-    const handleMessage = (message: { type: string; payload?: UISessionEndedPayload }) => {
+    const handleMessage = (message: { type: string; payload?: UISessionEndedPayload | UIStateUpdatePayload }) => {
       if (message.type === 'UI_SESSION_ENDED' && message.payload) {
         console.log('[TraceQA:Popup] Session ended:', message.payload);
 
         // Reset state to idle
         setState({
           isRecording: false,
+          isPaused: false,
+          duration: 0,
           sessionId: null,
           startTime: null,
-          error: message.payload.reason === 'error' ? message.payload.error ?? 'Recording failed' : null,
+          error: (message.payload as UISessionEndedPayload).reason === 'error'
+            ? (message.payload as UISessionEndedPayload).error ?? 'Recording failed'
+            : null,
           isLoading: false,
         });
+      } else if (message.type === 'UI_STATE_UPDATE' && message.payload) {
+        const payload = message.payload as UIStateUpdatePayload;
+        // Update isPaused and duration from authoritative background source
+        setState((prev) => ({
+          ...prev,
+          isPaused: payload.isPaused,
+          duration: payload.duration,
+        }));
       }
     };
 
@@ -164,6 +194,8 @@ export function useRecordingState(): {
 
       setState({
         isRecording: true,
+        isPaused: false,
+        duration: 0,
         sessionId,
         startTime,
         error: null,
@@ -198,6 +230,8 @@ export function useRecordingState(): {
 
       setState({
         isRecording: false,
+        isPaused: false,
+        duration: 0,
         sessionId: null,
         startTime: null,
         error: null,

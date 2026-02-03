@@ -3,14 +3,26 @@ import { cn } from '@shared/utils/cn';
 
 interface StatusIndicatorProps {
   isRecording: boolean;
+  isPaused: boolean;
   statusText?: string;
 }
 
 export function StatusIndicator({
   isRecording,
+  isPaused,
   statusText,
 }: StatusIndicatorProps): React.ReactElement {
-  const defaultText = isRecording ? 'Recording in progress' : 'Ready to capture';
+  const getDefaultText = (): string => {
+    if (!isRecording) return 'Ready to capture';
+    if (isPaused) return 'Recording paused';
+    return 'Recording in progress';
+  };
+
+  const getDotClass = (): string => {
+    if (!isRecording) return 'bg-gray-300';
+    if (isPaused) return 'bg-amber-500'; // Amber, no pulse when paused
+    return 'bg-red-500 animate-pulse'; // Red, pulsing when recording
+  };
 
   return (
     <div
@@ -19,12 +31,9 @@ export function StatusIndicator({
     >
       <div
         data-testid="status-dot"
-        className={cn(
-          'w-3 h-3 rounded-full transition-colors',
-          isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-300'
-        )}
+        className={cn('w-3 h-3 rounded-full transition-colors', getDotClass())}
       />
-      <span className="text-sm text-gray-600">{statusText ?? defaultText}</span>
+      <span className="text-sm text-gray-600">{statusText ?? getDefaultText()}</span>
     </div>
   );
 }
