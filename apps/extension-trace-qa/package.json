@@ -6,7 +6,8 @@
     "dev": "webpack --watch --mode development",
     "build": "webpack --mode production",
     "typecheck": "tsc --noEmit",
-    "test": "vitest"
+    "test": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@webext-core/messaging": "^1.4.0",
@@ -16,13 +17,18 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/user-event": "^14.0.0",
     "@types/chrome": "^0.0.260",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
+    "@vitest/coverage-v8": "^1.1.0",
     "autoprefixer": "^10.4.16",
     "copy-webpack-plugin": "^12.0.0",
     "css-loader": "^6.8.0",
+    "fake-indexeddb": "^5.0.0",
     "html-webpack-plugin": "^5.6.0",
+    "jsdom": "^23.0.0",
     "mini-css-extract-plugin": "^2.7.0",
     "postcss": "^8.4.32",
     "postcss-loader": "^7.3.0",
