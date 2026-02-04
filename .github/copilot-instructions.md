@@ -102,7 +102,9 @@ src/
 ```
 
 ### Naming Conventions
-- **Files**: camelCase for utilities, PascalCase for components (e.g., `RecordingButton.tsx`, `messageRouter.ts`)
+- **Files**: 
+  - TypeScript utility files: camelCase (e.g., `messageRouter.ts`, `storageUtils.ts`)
+  - React component files: PascalCase (e.g., `RecordingButton.tsx`, `StatusIndicator.tsx`)
 - **Components**: PascalCase (e.g., `RecordingButton`, `StatusIndicator`)
 - **Functions**: camelCase (e.g., `startRecording`, `handleMessage`)
 - **Constants**: UPPER_SNAKE_CASE (e.g., `MAX_RECORDING_DURATION`, `VIDEO_QUALITY`)
@@ -266,8 +268,10 @@ Key documentation files in the repository:
 ## Security Considerations
 
 1. **Permissions**: Request only necessary permissions in manifest.json
-2. **Data Privacy**: Implement blur regions for sensitive data
+2. **Data Privacy**: Implement blur regions for sensitive data in recordings
 3. **Storage**: Never store sensitive data in chrome.storage.local (not encrypted)
+   - Sensitive data includes: user credentials, passwords, API keys, authentication tokens, personally identifiable information (PII) like SSN, credit card numbers
+   - Use blur regions to protect sensitive visual data in recordings
 4. **Network**: Use HTTPS for all external communications
 5. **User Data**: Get explicit consent before recording
 
