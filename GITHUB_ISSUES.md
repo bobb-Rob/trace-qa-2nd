@@ -471,7 +471,7 @@ Capture console logs and network requests during recording sessions. This data p
 ### Description
 Build a basic post-recording preview overlay that appears after stopping a recording. This initial version focuses on essential playback functionality to get the basic feature out first.
 
-**Simplified Scope:** Just the ability to replay the video, pause, play, then exit with URL for the Video. Complex features like trim, blur, and comments are handled by separate issues.
+**Simplified Scope:** Just the ability to replay the video, pause, play, then exit with URL for the video. Complex features like trim, blur, and comments are handled by separate issues.
 
 ### Scope
 - Included:
