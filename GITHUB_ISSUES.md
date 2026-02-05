@@ -1,0 +1,1826 @@
+# TraceQA - GitHub Issues for Implementation
+
+**Generated:** 2026-02-04  
+**Source Documents:** currentRoadMap1.md, PRD.doc, FEATURES.md, PRODUCT.md, README.md  
+**Status:** Ready for Issue Creation  
+
+---
+
+## Executive Summary
+
+This document contains **GitHub issue drafts** for the TraceQA Chrome Extension project, organized by priority and grouped by feature area. Each issue follows the standardized template and enforces a **testing-first workflow**.
+
+### Overview Statistics
+
+- **Total Issues:** 34
+- **Dev Tasks:** 34
+- **Priority P0 (Critical):** 8
+- **Priority P1 (High):** 13
+- **Priority P2 (Medium):** 10
+- **Priority P3 (Low):** 3
+
+---
+
+## Issue Organization
+
+### Group 1: Core Media Pipeline (P0-P2)
+Issues 1-7: Core video recording and processing functionality
+- Issues 1-5: P0-P1 Critical features
+- Issues 6-7: P2 Additional capture features
+
+### Group 2: UI Components (P1 - High)  
+Issues 8-13: User interface and controls
+
+### Group 3: State Management (P1 - High)
+Issues 14-18: State persistence and recovery
+
+### Group 4: Edge Cases & Error Handling (P2 - Medium)
+Issues 19-25: Robustness and error scenarios
+
+### Group 5: Technical Debt (P2 - Medium)
+Issues 26-31: Code quality and maintainability
+
+### Group 6: Documentation (P3 - Low)
+Issues 32-34: Documentation updates
+
+---
+
+## Priority Order (Implementation Sequence)
+
+### Sprint 1: Foundation & Critical Features (Week 1-2)
+1. Issue #1 - Add Audio Capture Support (dev)
+2. Issue #2 - Implement R2 Upload Pipeline (dev)
+3. Issue #3 - Implement Video Trimming (dev)
+4. Issue #4 - Implement Blur Regions (dev)
+5. Issue #5 - Add Retry Mechanism for Failures (dev)
+6. Issue #8 - Create Preview Overlay Component (dev) - Basic version
+7. Issue #26 - Remove Unused Dependencies (refactor)
+
+### Sprint 2: State Management & UI (Week 3)
+8. Issue #14 - Implement State Persistence (dev)
+9. Issue #15 - Add Service Worker Recovery (dev)
+10. Issue #9 - Enhance Floating Pane Controls (dev)
+11. Issue #10 - Add Keyboard Shortcuts (dev)
+12. Issue #16 - Implement Watchdog Timer (dev)
+
+### Sprint 3: Collaboration Features (Week 4)
+13. Issue #11 - Implement Shareable Links (dev)
+14. Issue #12 - Add Timestamped Comments (dev)
+15. Issue #13 - Create Dashboard Views (dev)
+16. Issue #6 - Implement Session Flags (dev)
+
+### Sprint 4: Polish & Documentation (Week 5)
+17. Issue #27 - Refactor Background Service Worker (refactor)
+18. Issue #28 - Add Structured Logging (refactor)
+19. Issue #32 - Update User Documentation (dev)
+20. Issue #33 - Create Testing Documentation (dev)
+
+---
+
+# GitHub Issue Drafts
+
+---
+
+## Issue #1: Add Audio Capture Support
+
+**Label:** `dev`  
+**Priority:** `P0 - Critical`  
+**Estimate:** 3 days  
+**Group:** Core Media Pipeline
+
+### Description
+Implement microphone audio capture during video recording. The UI toggle for microphone exists but is currently non-functional. Users need the ability to narrate their recordings for better bug reports and documentation.
+
+Audio should come first before R2 upload as it's a fundamental recording capability that users will expect. Audio mixing is essential for complete recordings and must be implemented before building the upload pipeline.
+
+### Scope
+- Included:
+  - Request microphone permission via getUserMedia
+  - Mix microphone audio with screen capture
+  - Mute/unmute functionality during recording
+  - Audio level indicator
+  - Persist audio settings in chrome.storage
+  - Handle permission denial gracefully
+  
+- Excluded:
+  - Tab audio capture (requires different API)
+  - Audio editing or noise cancellation
+  - Multiple microphone selection
+  - Audio-only recording mode
+
+### Acceptance Criteria
+- [x] Microphone permission is requested on first use
+- [x] Audio is captured and mixed with video stream
+- [x] Mute/unmute toggle works during recording
+- [x] Audio level indicator shows input activity
+- [x] Audio settings persist across sessions
+- [x] Permission denial shows helpful error message
+- [x] Recording works without audio if permission denied
+
+### Testing Requirements
+- [x] Unit tests for audio stream management
+- [x] Test coverage is ≥ 95% for audio module
+- [x] Manual test: verify audio in downloaded video
+- [x] Negative test: permission denied
+- [x] Negative test: microphone disconnected during recording
+- [x] Negative test: microphone unavailable (no device)
+- [x] Edge case: mute/unmute rapid toggling
+- [x] Edge case: audio permission granted then revoked
+- [x] Integration test: audio in final video output
+- [x] Integration test: mute state persists across sessions
+- [x] Performance test: audio latency is acceptable (<100ms)
+- [x] Browser compatibility: Chrome, Edge
+
+### Dependencies
+- None (this is now first priority)
+
+### Notes
+- Must complete audio capture before moving to R2 upload
+- Audio mixing must not impact video quality
+- Consider audio buffer size for optimal latency
+
+---
+
+## Issue #2: Implement R2 Upload Pipeline
+
+**Label:** `dev`  
+**Priority:** `P0 - Critical`  
+**Estimate:** 5 days  
+**Group:** Core Media Pipeline
+
+### Description
+Implement video upload to Cloudflare R2 storage to enable cloud-based video sharing. Currently, recordings are only downloaded locally. This feature is essential for collaboration and sharing capabilities.
+
+The upload pipeline should handle chunked uploads for large files, provide progress feedback, and gracefully handle network failures with retry logic.
+
+### Scope
+- Included:
+  - R2 bucket configuration and authentication
+  - Chunked upload implementation for large files (files >10MB use 5MB chunks)
+  - Upload progress tracking
+  - Pre-signed URL generation for uploads
+  - Post-upload video URL generation
+  - IndexedDB cleanup after successful upload
+  - Background upload continuation (survives service worker restart)
+  
+- Excluded:
+  - Video transcoding or format conversion
+  - CDN caching configuration
+  - Video streaming optimizations
+  - Thumbnail generation
+
+### Acceptance Criteria
+- [x] R2 bucket is configured with proper CORS and permissions
+- [x] Upload initiates automatically after recording stops
+- [x] Large files (>10MB) are uploaded in chunks
+- [x] Upload progress is displayed to user in real-time
+- [x] Failed uploads are retried up to 3 times with exponential backoff
+- [x] Successful upload returns shareable video URL
+- [x] Local IndexedDB blob is deleted after successful upload
+- [x] Upload survives service worker termination
+
+### Testing Requirements
+- [x] Unit tests for upload chunking logic
+- [x] Unit tests for retry mechanism
+- [x] Unit tests for progress calculation
+- [x] Unit tests for IndexedDB cleanup
+- [x] Integration test for full upload flow
+- [x] Integration test: upload survives service worker restart
+- [x] Test coverage is ≥ 95% for R2 upload module
+- [x] Negative test: network failure during upload
+- [x] Negative test: R2 authentication failure
+- [x] Negative test: storage quota exceeded
+- [x] Negative test: upload timeout
+- [x] Negative test: invalid file format
+- [x] Edge case: service worker terminates during upload
+- [x] Edge case: very large files (>100MB)
+- [x] Edge case: very slow network connection
+- [x] Edge case: retry exhaustion (all 3 attempts fail)
+- [x] Performance test: chunking efficiency
+- [x] Manual test: verify uploaded video plays correctly
+
+### Dependencies
+- R2 bucket provisioned and credentials available
+- Backend API endpoint for pre-signed URL generation
+- Issue #1 (Audio Capture) should be completed first
+
+### Notes
+- Use multipart upload for files >10MB
+- Store upload state in chrome.storage.local for recovery
+- Consider using tus protocol for resumable uploads
+- Chunk size of 5MB balances network efficiency (fewer HTTP requests) with memory usage (manageable chunk size in browser)
+
+---
+
+## Issue #3: Implement Video Trimming
+
+**Label:** `dev`  
+**Priority:** `P1 - High`  
+**Estimate:** 4 days  
+**Group:** Core Media Pipeline
+
+### Description
+Add video trimming capability in the post-recording preview overlay. Users should be able to remove unwanted portions from the beginning or end of their recordings before upload.
+
+### Scope
+- Included:
+  - Dual-handle range slider for trim points
+  - Real-time preview of trim boundaries
+  - Duration display showing trimmed length
+  - Apply trim before upload (server-side or client-side)
+  - Quick trim presets: "Remove first 5s", "Remove last 10s"
+  
+- Excluded:
+  - Mid-video cuts (removing sections from middle)
+  - Frame-accurate trimming
+  - Audio-only trimming
+  - Trim undo/redo after save
+
+### Acceptance Criteria
+- [x] Trim slider appears in preview overlay
+- [x] Start and end handles are independently draggable
+- [x] Video preview updates when handles move
+- [x] Trimmed duration is displayed
+- [x] Quick trim buttons work correctly
+- [x] Trim is applied before upload
+- [x] Original recording is discarded after trim
+
+### Testing Requirements
+- [x] Unit tests for trim calculation logic
+- [x] Unit tests for slider handle logic
+- [x] Unit tests for duration calculations
+- [x] Test coverage is ≥ 95% for trim module
+- [x] Integration test: trim applied to video
+- [x] Manual test: verify trimmed video plays correctly
+- [x] Manual test: slider UI is responsive
+- [x] Edge case: trim entire video (error handling)
+- [x] Edge case: trim handles at same position
+- [x] Edge case: very short video (<2 seconds)
+- [x] Edge case: trim to 0 duration (should show error)
+- [x] Negative test: invalid trim range (end before start)
+- [x] Performance test: trim large video (>50MB)
+- [x] Browser compatibility test
+
+### Dependencies
+- Requires preview overlay component for post-recording trim
+- Should be integrated into preview overlay after Issue #8 (basic preview) is complete
+
+---
+
+## Issue #4: Implement Blur Regions
+
+**Label:** `dev`  
+**Priority:** `P1 - High`  
+**Estimate:** 5 days  
+**Group:** Core Media Pipeline
+
+### Description
+Implement privacy protection by allowing users to blur sensitive areas of their recordings. Users should be able to draw rectangles over parts of the video to apply Gaussian blur, both during and after recording.
+
+### Scope
+- Included:
+  - Click-drag rectangle selection for blur regions
+  - Real-time blur preview during recording
+  - Post-recording blur region addition
+  - Blur region removal (delete individual regions)
+  - Blur regions stored as percentage coordinates (viewport-relative)
+  - Apply blur during video processing
+  
+- Excluded:
+  - Automatic PII detection
+  - Blur region editing (resize/reposition after creation)
+  - Different blur intensities
+  - Blur region animation or tracking
+
+### Acceptance Criteria
+- [x] Blur button toggles blur drawing mode
+- [x] Cursor changes to crosshair in blur mode
+- [x] Click-drag creates blur rectangle
+- [x] Blur is applied to selected region immediately
+- [x] Each blur region has a delete (×) button
+- [x] Blur regions survive page navigation (TAB mode)
+- [x] Blur is baked into final video before upload
+
+### Testing Requirements
+- [x] Unit tests for blur region calculations
+- [x] Unit tests for coordinate transformation (viewport to video)
+- [x] Unit tests for blur region storage
+- [x] Unit tests for blur region deletion
+- [x] Test coverage is ≥ 95% for blur module
+- [x] Integration test: blur applied to final video
+- [x] Manual test: verify blur appears in final video
+- [x] Manual test: blur UI is intuitive
+- [x] Edge case: blur region outside viewport
+- [x] Edge case: overlapping blur regions
+- [x] Edge case: blur during page scroll
+- [x] Edge case: very small blur region (<10px)
+- [x] Edge case: blur region covering entire viewport
+- [x] Edge case: multiple blur regions (20+ regions)
+- [x] Performance test: blur processing time
+- [x] Performance test: real-time blur preview performance
+- [x] Browser compatibility test
+
+### Dependencies
+- Requires canvas or video processing capability
+
+---
+
+## Issue #5: Add Retry Mechanism for Failures
+
+**Label:** `dev`  
+**Priority:** `P1 - High`  
+**Estimate:** 2 days  
+**Group:** Error Handling
+
+### Description
+Implement automatic retry logic for transient failures (network errors, temporary service unavailability). Currently, errors are shown but no retry is attempted, leading to poor user experience.
+
+### Scope
+- Included:
+  - Exponential backoff retry strategy
+  - Maximum 3 retry attempts
+  - Retry for: R2 upload, API calls, IndexedDB operations
+  - User feedback showing retry progress
+  - Manual retry button for failed operations
+  
+- Excluded:
+  - Retry for permission failures (non-retryable)
+  - Retry for invalid data errors
+  - Persistent retry queue across sessions
+
+### Acceptance Criteria
+- [x] Failed operations retry automatically up to 3 times
+- [x] Retry uses exponential backoff (1s, 2s, 4s)
+- [x] User sees "Retrying... (attempt 2/3)" message
+- [x] Manual retry button appears after all attempts fail
+- [x] Non-retryable errors skip retry logic
+- [x] Retry state is logged for debugging
+
+### Testing Requirements
+- [x] Unit tests for retry logic with mocked failures
+- [x] Unit tests for exponential backoff timing
+- [x] Unit tests for retry count limits
+- [x] Test coverage is ≥ 95% for retry module
+- [x] Integration test: successful retry
+- [x] Negative test: all retries fail
+- [x] Negative test: non-retryable error
+- [x] Edge case: success on 1st retry
+- [x] Edge case: success on 3rd retry
+- [x] Edge case: rapid failures
+- [x] Manual test: user sees retry messages
+- [x] Manual test: manual retry button works
+
+---
+
+## Issue #6: Implement Session Flags
+
+**Label:** `dev`  
+**Priority:** `P2 - Medium`  
+**Estimate:** 3 days  
+**Group:** Core Media Pipeline
+
+### Description
+Allow users to flag important moments during recording with different flag types (Issue, Success, Important, Note). Flags should appear as timeline markers in the preview overlay and dashboard.
+
+### Scope
+- Included:
+  - Flag button in floating pane with type selector
+  - Flag types: Issue (🐛), Success (✅), Important (⭐), Note (📝)
+  - Optional text note for each flag
+  - Automatic screenshot capture on flag
+  - Flags displayed on timeline with icons
+  - Click flag to seek video to that timestamp
+  
+- Excluded:
+  - Flag editing after creation
+  - Flag categories or custom types
+  - Flag sharing or export
+  - AI-generated flags
+
+### Acceptance Criteria
+- [x] Flag button opens type selector menu
+- [x] Each flag type has distinct icon and color
+- [x] Flag is created with current timestamp
+- [x] Optional text note can be added
+- [x] Screenshot is captured automatically
+- [x] Flags appear on timeline in preview overlay
+- [x] Clicking flag seeks video to timestamp
+
+### Testing Requirements
+- [x] Unit tests for flag creation and storage
+- [x] Unit tests for screenshot capture
+- [x] Test coverage is ≥ 95% for flag module
+- [x] Edge case: flag at same timestamp (duplicate)
+- [x] Edge case: flag during pause
+- [x] Edge case: 100+ flags in single session
+- [x] Edge case: flag at timestamp 0:00
+- [x] Manual test: flag UI is intuitive
+- [x] Performance test: many flags don't slow playback
+
+---
+
+## Issue #7: Implement Console/Network Capture
+
+**Label:** `dev`  
+**Priority:** `P2 - Medium`  
+**Estimate:** 4 days  
+**Group:** Session Capture
+
+### Description
+Capture console logs and network requests during recording sessions. This data provides crucial debugging context for bug reports.
+
+### Scope
+- Included:
+  - Console capture: log, warn, error, info levels
+  - Network capture: URL, method, status, timing, headers
+  - Store data in IndexedDB during session
+  - Display in session detail view
+  - Filter by level/status in UI
+  
+- Excluded:
+  - Request/response body capture (size concerns)
+  - WebSocket capture
+  - Service worker network requests
+  - Live network panel (only post-recording view)
+
+### Acceptance Criteria
+- [x] Console logs are captured from content script
+- [x] Network requests are captured via webRequest API
+- [x] Data is stored in IndexedDB with timestamps
+- [x] Console and network tabs in preview overlay
+- [x] Errors show count on timeline
+- [x] Filter controls work correctly
+- [x] Data is included in session export
+
+### Testing Requirements
+- [x] Unit tests for data capture and storage
+- [x] Unit tests for filtering logic
+- [x] Test coverage is ≥ 95% for capture module
+- [x] Edge case: high-frequency events (100+ per second)
+- [x] Edge case: large console messages (>10KB)
+- [x] Performance test: 1000+ network requests
+- [x] Integration test: captured data appears in UI
+
+---
+
+## Issue #8: Create Preview Overlay Component (Basic Version)
+
+**Label:** `dev`  
+**Priority:** `P0 - Critical`  
+**Estimate:** 2 days  
+**Group:** UI Components
+
+### Description
+Build a basic post-recording preview overlay that appears after stopping a recording. This initial version focuses on essential playback functionality to get the basic feature out first.
+
+**Simplified Scope:** Just the ability to replay the video, pause, play, then exit with URL for the video. Complex features like trim, blur, and comments are handled by separate issues.
+
+### Scope
+- Included:
+  - Full-page modal overlay
+  - Video player with basic controls (play, pause, seek)
+  - Timeline/progress bar
+  - Exit button (closes overlay)
+  - Share button (generates URL and copies to clipboard)
+  - Video metadata display (duration, timestamp)
+  
+- Excluded (moved to other issues):
+  - Trim controls (Issue #3)
+  - Blur region editor (Issue #4)
+  - Comments panel (Issue #12)
+  - Timeline markers (Issue #6)
+  - Advanced video effects
+  - Collaborative editing
+  - Version history
+
+### Acceptance Criteria
+- [x] Overlay appears immediately after recording stops
+- [x] Video plays in player
+- [x] Play/Pause controls work
+- [x] Seek bar allows navigation through video
+- [x] Exit button closes overlay
+- [x] Share button generates shareable URL
+- [x] URL is copied to clipboard on share
+- [x] Video metadata is displayed
+
+### Testing Requirements
+- [x] Component tests for all UI elements
+- [x] Unit tests for video player controls
+- [x] Integration test: overlay appears after recording
+- [x] Integration test: share flow generates URL
+- [x] Visual regression tests
+- [x] Manual test: full user journey
+- [x] Manual test: video playback is smooth
+- [x] Edge case: close without sharing (confirmation)
+- [x] Edge case: video fails to load
+- [x] Performance test: large videos (>50MB) load quickly
+- [x] Accessibility test: keyboard controls work
+- [x] Browser compatibility test
+
+### Dependencies
+- Video must be available in IndexedDB
+- Issue #2 (R2 Upload) for generating shareable URL
+
+### Notes
+- Keep this simple - just playback and exit with URL
+- More advanced features (trim, blur, comments) are separate issues
+- Design should include extension points for future integration of trim/blur controls
+
+---
+
+## Issue #9: Enhance Floating Pane Controls
+
+**Label:** `dev`  
+**Priority:** `P1 - High`  
+**Estimate:** 2 days  
+**Group:** UI Components
+
+### Description
+Improve the floating control pane with better visual feedback, animations, and additional controls (flag button, mute indicator).
+
+### Scope
+- Included:
+  - Improved visual design with animations
+  - Flag button with type selector
+  - Mute indicator (microphone icon with status)
+  - Size limit warning indicator
+  - Keyboard focus management
+  
+- Excluded:
+  - Minimizable pane
+  - Multiple pane instances
+  - Pane settings/customization
+
+### Acceptance Criteria
+- [x] Pane design matches mockups
+- [x] Animations are smooth (60fps)
+- [x] Flag button opens menu correctly
+- [x] Mute indicator updates in real-time
+- [x] Size warning appears at 80MB
+- [x] Keyboard navigation works
+- [x] Visual state matches recording state
+
+### Testing Requirements
+- [x] Component tests for all controls
+- [x] Unit tests for state updates
+- [x] Visual regression tests (snapshots)
+- [x] Manual test: animations are smooth
+- [x] Manual test: all controls are accessible
+- [x] Accessibility test: keyboard navigation
+- [x] Accessibility test: screen reader support
+- [x] Performance test: 60fps animations
+- [x] Browser compatibility test
+
+---
+
+## Issue #10: Add Keyboard Shortcuts
+
+**Label:** `dev`  
+**Priority:** `P2 - Medium`  
+**Estimate:** 2 days  
+**Group:** UI Components
+
+### Description
+Implement keyboard shortcuts for common actions. Listener infrastructure exists but functionality is not implemented.
+
+### Scope
+- Included:
+  - Start/Stop recording (Ctrl+Shift+R)
+  - Pause/Resume (Ctrl+Shift+P)
+  - Add flag (Ctrl+Shift+F)
+  - Show/Hide floating pane (Ctrl+Shift+H)
+  - Configurable shortcuts in options page
+  
+- Excluded:
+  - Global shortcuts (outside browser)
+  - Shortcut conflicts detection
+  - Shortcut help overlay
+
+### Acceptance Criteria
+- [x] Default shortcuts work correctly
+- [x] Shortcuts are documented
+- [x] Options page allows customization
+- [x] Shortcuts don't conflict with browser/page shortcuts
+- [x] Shortcuts work across all recording modes
+- [x] Shortcuts respect recording state
+
+### Testing Requirements
+- [x] Unit tests for shortcut handling
+- [x] Unit tests for shortcut registration
+- [x] Manual test: all shortcuts work
+- [x] Manual test: shortcuts can be customized
+- [x] Edge case: shortcut while popup is open
+- [x] Edge case: shortcut on page with conflicting keys
+- [x] Edge case: invalid shortcut combination
+- [x] Accessibility test: shortcuts are documented
+- [x] Browser compatibility test
+
+---
+
+## Issue #11: Implement Shareable Links
+
+**Label:** `dev`  
+**Priority:** `P1 - High`  
+**Estimate:** 3 days  
+**Group:** Collaboration
+
+### Description
+Generate shareable links for recordings that allow anyone with the link to view the session.
+
+### Scope
+- Included:
+  - Short URL generation (e.g., /s/abc123)
+  - Link-only access (no authentication required)
+  - Optional password protection
+  - Optional expiration time
+  - View count tracking
+  - Link revocation
+  - Timestamp deep links (e.g., ?t=135)
+  
+- Excluded:
+  - Email notifications
+  - Link analytics (detailed viewer data)
+  - Multiple access levels (view/edit)
+
+### Acceptance Criteria
+- [x] Share link is generated after video upload
+- [x] Link uses short, URL-safe ID
+- [x] Public view page displays video correctly
+- [x] Password protection works (if enabled)
+- [x] Expired links show appropriate message
+- [x] View count increments on access
+- [x] Timestamp links seek to correct position
+
+### Testing Requirements
+- [x] Unit tests for link generation
+- [x] Unit tests for password validation
+- [x] Unit tests for expiration logic
+- [x] Integration test for full share flow
+- [x] Test coverage is ≥ 95% for share module
+- [x] Negative test: invalid share ID
+- [x] Negative test: expired link
+- [x] Negative test: wrong password
+- [x] Edge case: same session shared multiple times
+- [x] Edge case: link revoked after sharing
+- [x] Manual test: full sharing workflow
+- [x] Security test: password strength validation
+
+---
+
+## Issue #12: Add Timestamped Comments
+
+**Label:** `dev`  
+**Priority:** `P1 - High`  
+**Estimate:** 3 days  
+**Group:** Collaboration
+
+### Description
+Allow users to add timestamped comments to recordings for collaboration with team members.
+
+### Scope
+- Included:
+  - Add comment at current video timestamp
+  - Edit and delete own comments
+  - Display comments in sidebar
+  - Show comments as markers on timeline
+  - Click comment to seek video
+  - Comment author display (name/avatar)
+  
+- Excluded:
+  - Comment threading/replies
+  - @mentions or notifications
+  - Comment reactions
+  - Rich text formatting
+
+### Acceptance Criteria
+- [x] Comment can be added at any timestamp
+- [x] Comment input appears in sidebar
+- [x] Comments display with timestamp and author
+- [x] Clicking comment seeks video
+- [x] Edit/delete buttons work for own comments
+- [x] Comments appear as timeline markers
+- [x] Comments persist across sessions
+
+### Testing Requirements
+- [x] Unit tests for comment operations (CRUD)
+- [x] Unit tests for comment sorting
+- [x] Test coverage is ≥ 95% for comment module
+- [x] Integration test: comments persist and reload
+- [x] Edge case: 100+ comments on single video
+- [x] Edge case: comment at timestamp 0:00
+- [x] Edge case: long comment text (>1000 chars)
+- [x] Edge case: rapid comment creation
+- [x] Manual test: comment UI is intuitive
+- [x] Performance test: many comments don't slow playback
+
+---
+
+## Issue #13: Create Dashboard Views
+
+**Label:** `dev`  
+**Priority:** `P1 - High`  
+**Estimate:** 5 days  
+**Group:** UI Components
+
+### Description
+Build the main dashboard with session list, session detail, and WorkItem views.
+
+### Scope
+- Included:
+  - Session list with grid/list toggle
+  - Session detail view with video player
+  - WorkItem list with filtering
+  - WorkItem detail view
+  - Navigation and routing
+  - Search functionality
+  
+- Excluded:
+  - Advanced analytics
+  - Bulk operations
+  - Custom views/saved filters
+  - Export functionality
+
+### Acceptance Criteria
+- [x] Session list displays all user sessions
+- [x] Grid/list toggle works
+- [x] Clicking session opens detail view
+- [x] Video player works in detail view
+- [x] WorkItem list shows all items
+- [x] Filter controls work correctly
+- [x] Search returns relevant results
+
+### Testing Requirements
+- [x] Component tests for all views
+- [x] Unit tests for filtering logic
+- [x] Unit tests for search functionality
+- [x] Integration test for navigation
+- [x] Visual regression tests
+- [x] Performance test: 1000+ sessions
+- [x] Performance test: search performance
+- [x] Accessibility tests
+- [x] Manual test: full navigation flow
+- [x] Browser compatibility test
+
+---
+
+## Issue #14: Implement State Persistence
+
+**Label:** `dev`  
+**Priority:** `P0 - Critical`  
+**Estimate:** 2 days  
+**Group:** State Management
+
+### Description
+Ensure recording state persists correctly across popup close, service worker restarts, and browser restarts. This is critical for reliability.
+
+### Scope
+- Included:
+  - Save FSM state to chrome.storage.local on every transition
+  - Restore state on service worker wake
+  - Restore state on popup open
+  - Handle orphaned states (stale sessions)
+  - Watchdog timer for state validation
+  
+- Excluded:
+  - Cloud state synchronization
+  - State history/undo
+  - Cross-device state sync
+
+### Acceptance Criteria
+- [x] State persists across popup close
+- [x] State persists across service worker restart
+- [x] Orphaned states are detected and cleaned up
+- [x] Watchdog timer validates state periodically
+- [x] Recovery from invalid states is automatic
+- [x] No state corruption from race conditions
+
+### Testing Requirements
+- [x] Unit tests for persistence logic
+- [x] Unit tests for state serialization
+- [x] Integration test: popup close/open during recording
+- [x] Integration test: service worker termination
+- [x] Integration test: orphaned state cleanup
+- [x] Test coverage is ≥ 95% for persistence module
+- [x] Edge case: state corruption
+- [x] Edge case: version mismatch (migration)
+- [x] Edge case: concurrent state updates
+- [x] Manual test: close popup during recording, reopen
+- [x] Manual test: browser restart during recording
+
+---
+
+## Issue #15: Add Service Worker Recovery
+
+**Label:** `dev`  
+**Priority:** `P0 - Critical`  
+**Estimate:** 3 days  
+**Group:** State Management
+
+### Description
+Implement robust service worker recovery mechanisms to handle termination and restart gracefully without losing recordings.
+
+### Scope
+- Included:
+  - Detect service worker wake from termination
+  - Restore FSM context from storage
+  - Reconnect to offscreen document
+  - Resume state broadcasts
+  - Handle stale messages
+  
+- Excluded:
+  - Prevent termination (not possible)
+  - State migration between versions
+
+### Acceptance Criteria
+- [x] Service worker wake is detected
+- [x] FSM context is restored correctly
+- [x] Offscreen document is reconnected
+- [x] Recording continues after wake
+- [x] Stale messages are filtered
+- [x] Recovery is logged for debugging
+
+### Testing Requirements
+- [x] Unit tests for recovery logic
+- [x] Unit tests for wake detection
+- [x] Unit tests for stale message filtering
+- [x] Manual test: terminate and wake service worker
+- [x] Test coverage is ≥ 95% for recovery module
+- [x] Edge case: wake during state transition
+- [x] Edge case: multiple rapid wakes
+- [x] Edge case: offscreen document unavailable on wake
+- [x] Integration test: full recovery flow
+
+---
+
+## Issue #16: Implement Watchdog Timer
+
+**Label:** `dev`  
+**Priority:** `P1 - High`  
+**Estimate:** 2 days  
+**Group:** State Management
+
+### Description
+Already implemented but needs enhancement. Add per-state timeout validation and automatic recovery for stuck states.
+
+### Scope
+- Included:
+  - Per-state timeout configuration
+  - Automatic state validation on timeout
+  - Recovery actions for stuck states
+  - Logging of watchdog events
+  
+- Excluded:
+  - User-configurable timeouts
+  - Watchdog disable option
+
+### Acceptance Criteria
+- [x] Watchdog runs on appropriate interval
+- [x] Each state has configured timeout
+- [x] Timeout triggers state validation
+- [x] Stuck states trigger recovery
+- [x] Recovery actions are appropriate per state
+- [x] All events are logged
+
+### Testing Requirements
+- [x] Unit tests for watchdog logic (already exist, enhance)
+- [x] Unit tests for timeout calculations
+- [x] Test coverage is ≥ 95%
+- [x] Manual test: force stuck state
+- [x] Edge case: watchdog fires during valid long operation
+- [x] Edge case: rapid state changes
+- [x] Integration test: watchdog recovery flow
+
+---
+
+## Issue #17: Add Version Migration
+
+**Label:** `dev`  
+**Priority:** `P2 - Medium`  
+**Estimate:** 2 days  
+**Group:** State Management
+
+### Description
+Implement version migration for chrome.storage.local data when state schema changes between extension versions.
+
+### Scope
+- Included:
+  - Version field in stored state
+  - Migration functions for each version bump
+  - Automatic migration on extension update
+  - Fallback to defaults if migration fails
+  
+- Excluded:
+  - Rollback capability
+  - Cross-device migration
+  - User notification of migration
+
+### Acceptance Criteria
+- [x] Version field is stored with state
+- [x] Migration runs automatically on version change
+- [x] All data is migrated correctly
+- [x] Failed migration resets to defaults
+- [x] Migration is logged
+
+### Testing Requirements
+- [x] Unit tests for each migration function
+- [x] Unit tests for version detection
+- [x] Test coverage is ≥ 95%
+- [x] Manual test: install old version, update to new
+- [x] Edge case: skip multiple versions
+- [x] Edge case: migration fails midway
+- [x] Integration test: full migration flow
+
+---
+
+## Issue #18: Implement State Synchronization
+
+**Label:** `dev`  
+**Priority:** `P2 - Medium`  
+**Estimate:** 3 days  
+**Group:** State Management
+
+### Description
+Ensure all extension contexts (popup, background, content) stay synchronized with current recording state.
+
+### Scope
+- Included:
+  - Broadcast state updates every 500ms
+  - Subscribe to state updates in all contexts
+  - Handle late subscribers (already-running recording)
+  - Debounce rapid state changes
+  
+- Excluded:
+  - Real-time synchronization (<100ms latency)
+  - Peer-to-peer sync between contexts
+
+### Acceptance Criteria
+- [x] State broadcasts work from background
+- [x] All contexts receive state updates
+- [x] Updates are received within 500ms
+- [x] Late subscribers get current state immediately
+- [x] Rapid state changes are debounced
+- [x] No memory leaks from listeners
+
+### Testing Requirements
+- [x] Unit tests for broadcast logic
+- [x] Unit tests for debounce logic
+- [x] Integration test: multiple contexts
+- [x] Test coverage is ≥ 95%
+- [x] Performance test: 100+ rapid state changes
+- [x] Edge case: context added during broadcast
+- [x] Edge case: context removed during broadcast
+- [x] Manual test: all contexts stay in sync
+
+---
+
+## Issue #19: Handle Permission Denied Gracefully
+
+**Label:** `dev`  
+**Priority:** `P1 - High`  
+**Estimate:** 1 day  
+**Group:** Error Handling
+
+### Description
+Improve error messaging and recovery when user denies screen capture or microphone permissions.
+
+### Scope
+- Included:
+  - Clear error message explaining what went wrong
+  - Instructions for granting permission
+  - Link to browser settings
+  - Graceful fallback (continue without audio if mic denied)
+  
+- Excluded:
+  - Automatic permission retry
+  - Custom permission dialog
+
+### Acceptance Criteria
+- [x] Permission denial shows helpful error message
+- [x] Error message includes recovery instructions
+- [x] Link to settings works correctly
+- [x] State returns to IDLE after denial
+- [x] User can retry after fixing permissions
+- [x] Audio denial allows video-only recording
+
+### Testing Requirements
+- [x] Manual test: deny screen capture permission
+- [x] Manual test: deny microphone permission
+- [x] Test coverage is ≥ 95% for error handling
+- [x] Edge case: deny after previously granting
+- [x] Edge case: permission revoked during recording
+- [x] Manual test: error message is clear and helpful
+
+---
+
+## Issue #20: Handle Offscreen Document Failures
+
+**Label:** `dev`  
+**Priority:** `P1 - High`  
+**Estimate:** 1 day  
+**Group:** Error Handling
+
+### Description
+Handle cases where offscreen document fails to create or crashes unexpectedly.
+
+### Scope
+- Included:
+  - Detect offscreen creation failure
+  - Show appropriate error message
+  - Automatic retry (once)
+  - Fallback to error state if retry fails
+  - Detect offscreen crash during recording
+  
+- Excluded:
+  - Prevent crashes (not possible)
+  - Offscreen document debugging tools
+
+### Acceptance Criteria
+- [x] Creation failure is detected
+- [x] Error message is shown to user
+- [x] Automatic retry is attempted
+- [x] State returns to IDLE if retry fails
+- [x] Crash during recording is detected
+- [x] Partial recording is saved if possible
+
+### Testing Requirements
+- [x] Unit tests for error detection
+- [x] Test coverage is ≥ 95%
+- [x] Manual test: force offscreen failure
+- [x] Edge case: offscreen crashes immediately
+- [x] Edge case: retry succeeds
+- [x] Manual test: error message is helpful
+
+---
+
+## Issue #21: Handle IndexedDB Quota Exceeded
+
+**Label:** `dev`  
+**Priority:** `P2 - Medium`  
+**Estimate:** 1 day  
+**Group:** Error Handling
+
+### Description
+Handle IndexedDB quota exceeded errors gracefully by showing clear error and suggesting solutions.
+
+### Scope
+- Included:
+  - Detect quota exceeded error
+  - Show error with suggested fixes
+  - Link to Chrome storage management
+  - Automatic cleanup of old recordings
+  
+- Excluded:
+  - Quota monitoring/prediction
+  - User-configurable quota management
+
+### Acceptance Criteria
+- [x] Quota error is detected and shown
+- [x] Error message suggests clearing old recordings
+- [x] Link to storage management works
+- [x] Old recordings can be deleted from extension
+- [x] Recording stops gracefully on quota error
+
+### Testing Requirements
+- [x] Unit test: simulate quota exceeded
+- [x] Test coverage is ≥ 95%
+- [x] Manual test: fill quota and record
+- [x] Edge case: quota exceeded during save
+- [x] Manual test: cleanup reduces quota usage
+
+---
+
+## Issue #22: Handle Tab Navigation During Recording
+
+**Label:** `dev`  
+**Priority:** `P2 - Medium`  
+**Estimate:** 2 days  
+**Group:** Error Handling
+
+### Description
+Handle tab navigation during TAB mode recording by re-injecting content script and maintaining state.
+
+### Scope
+- Included:
+  - Detect tab navigation (URL change)
+  - Re-inject content script on new page
+  - Restore FloatingPane state
+  - Maintain recording session
+  
+- Excluded:
+  - Prevent navigation
+  - Track navigation history
+  - Capture navigation timing
+
+### Acceptance Criteria
+- [x] Navigation is detected
+- [x] Content script is re-injected automatically
+- [x] FloatingPane reappears with correct state
+- [x] Recording continues without interruption
+- [x] No duplicate script injection
+
+### Testing Requirements
+- [x] Integration test: navigate during recording
+- [x] Test coverage is ≥ 95%
+- [x] Edge case: rapid navigation
+- [x] Edge case: navigation to restricted page (chrome://)
+- [x] Edge case: navigation to same domain
+- [x] Manual test: recording continues after navigation
+
+---
+
+## Issue #23: Handle Chrome Crash/Force Quit
+
+**Label:** `dev`  
+**Priority:** `P3 - Low`  
+**Estimate:** 2 days  
+**Group:** Error Handling
+
+### Description
+Document limitations and handle best-effort recovery when Chrome crashes or is force-quit during recording.
+
+### Scope
+- Included:
+  - Detect incomplete session on next launch
+  - Offer recovery attempt
+  - Mark session as incomplete if not recoverable
+  - Clear IndexedDB of corrupt data
+  
+- Excluded:
+  - Prevent data loss (not possible)
+  - Cloud backup during recording
+
+### Acceptance Criteria
+- [x] Incomplete session is detected on launch
+- [x] Recovery is attempted automatically
+- [x] User is notified of recovery result
+- [x] Corrupt data is cleaned up
+- [x] Extension continues to work after recovery
+
+### Testing Requirements
+- [x] Manual test: force quit during recording
+- [x] Test coverage for recovery logic ≥ 95%
+- [x] Edge case: multiple incomplete sessions
+- [x] Manual test: recovery succeeds
+- [x] Manual test: recovery fails gracefully
+
+---
+
+## Issue #24: Add Loading States for All Actions
+
+**Label:** `dev`  
+**Priority:** `P2 - Medium`  
+**Estimate:** 2 days  
+**Group:** UX Improvements
+
+### Description
+Add proper loading indicators for all async actions to improve user experience.
+
+### Scope
+- Included:
+  - Loading spinner for start recording
+  - Loading state for stop recording
+  - Upload progress indicator
+  - Disable buttons during loading
+  - Timeout indicators for long operations
+  
+- Excluded:
+  - Skeleton screens
+  - Optimistic UI updates
+
+### Acceptance Criteria
+- [x] All async actions show loading state
+- [x] Buttons are disabled during operations
+- [x] Spinners appear within 100ms
+- [x] Loading states have timeout (show error after 30s)
+- [x] Loading text describes current action
+
+### Testing Requirements
+- [x] Component tests verify loading states
+- [x] Manual test: all actions show loading
+- [x] Edge case: extremely slow network
+- [x] Edge case: operation completes before spinner shows
+- [x] Manual test: loading messages are clear
+
+---
+
+## Issue #25: Implement Recording Requests
+
+**Label:** `dev`  
+**Priority:** `P2 - Medium`  
+**Estimate:** 4 days  
+**Group:** Collaboration
+
+### Description
+Allow users to request recordings from others by creating a recording request with instructions and sharing a link.
+
+### Scope
+- Included:
+  - Create request form (URL, instructions, deadline)
+  - Generate unique request link
+  - Request view page for recorder
+  - Link session to request
+  - Status tracking (Pending, In Progress, Completed)
+  - Email notification when completed
+  
+- Excluded:
+  - Multiple recorders per request
+  - Request templates
+  - Request approval workflow
+
+### Acceptance Criteria
+- [x] Request form validates all fields
+- [x] Request link is generated
+- [x] Recorder sees instructions on request page
+- [x] Recorder can start recording from request page
+- [x] Session is linked to request automatically
+- [x] Requester is notified when completed
+- [x] Request list shows status
+
+### Testing Requirements
+- [x] Unit tests for request lifecycle
+- [x] Integration test for full request flow
+- [x] Test coverage is ≥ 95% for request module
+- [x] Edge case: expired deadline
+- [x] Edge case: multiple sessions for same request
+- [x] Manual test: full request workflow
+- [x] Manual test: email notification works
+
+---
+
+## Issue #26: Remove Unused Dependencies
+
+**Label:** `refactor`  
+**Priority:** `P1 - High`  
+**Estimate:** 1 day  
+**Group:** Technical Debt
+
+### Description
+Remove unused dependencies (@webext-core/messaging, idb) to reduce bundle size and eliminate confusion.
+
+### Scope
+- Included:
+  - Identify all unused dependencies
+  - Remove from package.json
+  - Remove any unused imports
+  - Update documentation
+  - Verify build still works
+  
+- Excluded:
+  - Dev dependencies cleanup
+  - Transitive dependency optimization
+
+### Acceptance Criteria
+- [x] @webext-core/messaging is removed (not used)
+- [x] idb is removed (using native IndexedDB)
+- [x] No unused imports remain
+- [x] Build succeeds
+- [x] All tests pass
+- [x] Bundle size is reduced
+
+### Testing Requirements
+- [x] All tests pass after removal
+- [x] Build verification
+- [x] Manual smoke test
+- [x] Bundle size comparison (before/after)
+
+---
+
+## Issue #27: Refactor Background Service Worker
+
+**Label:** `refactor`  
+**Priority:** `P2 - Medium`  
+**Estimate:** 3 days  
+**Group:** Technical Debt
+
+### Description
+Break down the 954-line background/index.ts into smaller, more maintainable modules.
+
+### Scope
+- Included:
+  - Extract message routing to separate module
+  - Extract offscreen lifecycle to separate module
+  - Extract content script injection to separate module
+  - Extract storage operations to separate module
+  - Keep FSM module as-is (already well-structured)
+  
+- Excluded:
+  - Rewrite FSM (already good)
+  - Change message contracts
+  - Introduce new patterns
+
+### Acceptance Criteria
+- [x] background/index.ts is <300 lines
+- [x] Message routing is in separate module
+- [x] Offscreen lifecycle is in separate module
+- [x] Content script injection is in separate module
+- [x] Storage operations are in separate module
+- [x] All functionality remains the same
+- [x] All tests pass
+
+### Testing Requirements
+- [x] All existing tests pass
+- [x] Test coverage remains ≥ 95%
+- [x] No behavioral changes
+- [x] Unit tests for new modules
+- [x] Integration test: all parts work together
+
+---
+
+## Issue #28: Add Structured Logging
+
+**Label:** `refactor`  
+**Priority:** `P2 - Medium`  
+**Estimate:** 2 days  
+**Group:** Technical Debt
+
+### Description
+Replace ad-hoc console.log statements with structured logging for better debugging.
+
+### Scope
+- Included:
+  - Create logger utility with log levels
+  - Add context to log messages
+  - Include timestamps
+  - Add log filtering
+  - Enable/disable logs via options
+  
+- Excluded:
+  - Remote logging
+  - Log aggregation
+  - Log analytics
+
+### Acceptance Criteria
+- [x] Logger utility is created
+- [x] Log levels: debug, info, warn, error
+- [x] All console.log replaced with logger
+- [x] Logs include context (component, action)
+- [x] Logs include timestamps
+- [x] Logs can be filtered by level
+- [x] Logs can be disabled in production
+
+### Testing Requirements
+- [x] Unit tests for logger utility
+- [x] Manual test: logs appear in console
+- [x] Manual test: filtering works
+- [x] Manual test: logs can be disabled
+
+---
+
+## Issue #29: Add TypeScript Strict Mode
+
+**Label:** `refactor`  
+**Priority:** `P3 - Low`  
+**Estimate:** 2 days  
+**Group:** Technical Debt
+
+### Description
+Enable TypeScript strict mode and fix all resulting type errors for better type safety.
+
+### Scope
+- Included:
+  - Enable strict mode in tsconfig.json
+  - Fix all type errors
+  - Add missing type annotations
+  - Remove any types
+  
+- Excluded:
+  - Rewrite existing code
+  - Add runtime type checking
+
+### Acceptance Criteria
+- [x] Strict mode is enabled
+- [x] All type errors are fixed
+- [x] No any types remain (except where necessary)
+- [x] Build succeeds
+- [x] All tests pass
+
+### Testing Requirements
+- [x] TypeScript compilation succeeds
+- [x] All tests pass
+- [x] Manual review of type definitions
+
+---
+
+## Issue #30: Optimize Bundle Size
+
+**Label:** `refactor`  
+**Priority:** `P3 - Low`  
+**Estimate:** 2 days  
+**Group:** Technical Debt
+
+### Description
+Analyze and optimize bundle size to improve extension load time and performance.
+
+### Scope
+- Included:
+  - Run bundle analyzer
+  - Identify large dependencies
+  - Use dynamic imports where appropriate
+  - Remove dead code
+  - Optimize React imports
+  
+- Excluded:
+  - Minification (already done by Webpack)
+  - Code splitting for background worker
+  - Tree shaking improvements
+
+### Acceptance Criteria
+- [x] Bundle size is analyzed
+- [x] Large dependencies are identified
+- [x] Dynamic imports are used for rarely-used code
+- [x] Dead code is removed
+- [x] React imports are optimized
+- [x] Bundle size is reduced by at least 20%
+
+### Testing Requirements
+- [x] Build verification
+- [x] All tests pass
+- [x] Manual smoke test
+- [x] Load time measurement
+- [x] Bundle size comparison
+
+---
+
+## Issue #31: Improve Error Messages
+
+**Label:** `refactor`  
+**Priority:** `P2 - Medium`  
+**Estimate:** 2 days  
+**Group:** Technical Debt
+
+### Description
+Improve error messages throughout the extension to be more user-friendly and actionable.
+
+### Scope
+- Included:
+  - Audit all error messages
+  - Rewrite with clear language
+  - Add suggested actions
+  - Include error codes for debugging
+  - Consistent error message format
+  
+- Excluded:
+  - Automatic error reporting
+  - Error message translations
+
+### Acceptance Criteria
+- [x] All error messages are audited
+- [x] Error messages are clear and actionable
+- [x] Each error has suggested fix
+- [x] Error codes are included
+- [x] Format is consistent
+- [x] Technical jargon is minimized
+
+### Testing Requirements
+- [x] Manual review of all error paths
+- [x] User feedback on error clarity
+- [x] Test all error scenarios
+
+---
+
+## Issue #32: Update User Documentation
+
+**Label:** `dev`  
+**Priority:** `P3 - Low`  
+**Estimate:** 2 days  
+**Group:** Documentation
+
+### Description
+Create comprehensive user-facing documentation for the extension including user guide, FAQ, and troubleshooting.
+
+### Scope
+- Included:
+  - User guide with screenshots
+  - FAQ for common questions
+  - Troubleshooting guide
+  - Keyboard shortcuts reference
+  - Privacy policy
+  
+- Excluded:
+  - Video tutorials
+  - Interactive guides
+  - Translations
+
+### Acceptance Criteria
+- [x] User guide is complete with screenshots
+- [x] FAQ covers common scenarios
+- [x] Troubleshooting guide addresses known issues
+- [x] Keyboard shortcuts are documented
+- [x] Privacy policy is clear
+- [x] Documentation is accessible from extension
+
+### Testing Requirements
+- [x] Documentation is reviewed for accuracy
+- [x] Links work correctly
+- [x] Screenshots are up-to-date
+
+---
+
+## Issue #33: Create Testing Documentation
+
+**Label:** `dev`  
+**Priority:** `P3 - Low`  
+**Estimate:** 1 day  
+**Group:** Documentation
+
+### Description
+Document testing approach, conventions, and guidelines for contributors.
+
+### Scope
+- Included:
+  - Testing philosophy
+  - How to run tests
+  - How to write tests
+  - Mocking guidelines
+  - Coverage requirements
+  
+- Excluded:
+  - Detailed test examples (in code)
+  - Testing tools comparison
+
+### Acceptance Criteria
+- [x] Testing documentation is complete
+- [x] Examples are provided
+- [x] Guidelines are clear
+- [x] Coverage requirements are documented
+- [x] Mocking approach is explained
+
+### Testing Requirements
+- [x] Documentation is reviewed by team
+
+---
+
+## Issue #34: Implement WorkItem Model
+
+**Label:** `dev`  
+**Priority:** `P2 - Medium`  
+**Estimate:** 5 days  
+**Group:** Core Logic
+
+### Description
+Create the WorkItem data model representing bugs and test cases. WorkItems are the fundamental unit in TraceQA's workflow.
+
+### Scope
+- Included:
+  - WorkItem TypeScript interfaces and types
+  - Status flow state machine
+  - Bug and TestCase subtypes
+  - Promotion logic (Bug → TestCase)
+  - CRUD operations
+  - Database schema (PostgreSQL)
+  
+- Excluded:
+  - AI enrichment pipeline
+  - External integrations (Jira, Linear)
+  - WorkItem templates
+  - Bulk operations
+
+### Acceptance Criteria
+- [x] WorkItem type definition matches spec
+- [x] Status flow is enforced by state machine
+- [x] Bug type has all required fields
+- [x] TestCase type has all required fields
+- [x] Promotion creates new TestCase from Bug
+- [x] Database schema is created
+- [x] CRUD API endpoints work
+
+### Testing Requirements
+- [x] Unit tests for status flow transitions
+- [x] Unit tests for promotion logic
+- [x] Test coverage is ≥ 95% for WorkItem module
+- [x] Edge case: invalid status transition
+- [x] Edge case: promote already-promoted bug
+- [x] Integration test: full CRUD operations
+
+---
+
+# Testing Gaps Analysis
+
+## High-Risk Areas Requiring Additional Testing
+
+### 1. Race Conditions
+- **Risk:** Multiple async operations could interfere
+- **Testing Covered In:**
+  - Issue #1 (Audio): rapid mute/unmute toggling
+  - Issue #2 (R2 Upload): service worker restart during upload
+  - Issue #5 (Retry): rapid failures
+  - Issue #18 (State Sync): 100+ rapid state changes
+- **Recommendation:** Each issue includes specific race condition tests
+
+### 2. Edge Cases in MediaRecorder
+- **Risk:** Browser API behavior varies
+- **Testing Covered In:**
+  - Issue #3 (Trim): very short video (<2 seconds)
+  - Issue #4 (Blur): performance with large files
+  - Issue #1 (Audio): microphone disconnected during recording
+- **Recommendation:** Browser compatibility tests in relevant issues
+
+### 3. Content Script Lifecycle
+- **Risk:** Complex injection and cleanup logic
+- **Testing Covered In:**
+  - Issue #22 (Tab Navigation): rapid navigation, re-injection
+- **Recommendation:** Comprehensive navigation tests
+
+### 4. Storage Corruption
+- **Risk:** Power loss or crash during write
+- **Testing Covered In:**
+  - Issue #14 (State Persistence): state corruption, version mismatch
+  - Issue #23 (Crash Recovery): incomplete session detection
+  - Issue #21 (IndexedDB Quota): quota exceeded handling
+- **Recommendation:** Recovery tests in multiple issues
+
+### 5. Network Failures
+- **Risk:** Upload failures affect user experience
+- **Testing Covered In:**
+  - Issue #2 (R2 Upload): network failure, timeout, retry exhaustion
+  - Issue #5 (Retry): all retries fail, exponential backoff
+- **Recommendation:** Comprehensive network failure simulation
+
+---
+
+# Traceability Matrix
+
+## Feature → Issue Mapping
+
+| Feature | Development Issue | Notes |
+|---------|-------------------|-------|
+| Audio Capture | #1 | Now P0, moved to first |
+| R2 Upload | #2 | Now second, includes testing |
+| Video Trimming | #3 | Includes comprehensive testing |
+| Blur Regions | #4 | Includes comprehensive testing |
+| Retry Mechanism | #5 | Includes comprehensive testing |
+| Session Flags | #6 | - |
+| Console/Network Capture | #7 | - |
+| Preview Overlay (Basic) | #8 | Simplified, P0 priority |
+| Floating Pane | #9 | - |
+| Keyboard Shortcuts | #10 | - |
+| Shareable Links | #11 | - |
+| Timestamped Comments | #12 | - |
+| Dashboard Views | #13 | - |
+| State Persistence | #14 | Includes comprehensive testing |
+| Service Worker Recovery | #15 | Includes comprehensive testing |
+| Watchdog Timer | #16 | - |
+| Version Migration | #17 | - |
+| State Synchronization | #18 | - |
+| Permission Handling | #19 | - |
+| Offscreen Failures | #20 | - |
+| IndexedDB Quota | #21 | - |
+| Tab Navigation | #22 | - |
+| Crash Recovery | #23 | - |
+| Loading States | #24 | - |
+| Recording Requests | #25 | - |
+| Remove Dependencies | #26 | - |
+| Background Refactor | #27 | - |
+| Structured Logging | #28 | - |
+| TypeScript Strict | #29 | - |
+| Bundle Optimization | #30 | - |
+| Error Messages | #31 | - |
+| User Documentation | #32 | - |
+| Testing Documentation | #33 | - |
+| WorkItem Model | #34 | - |
+
+---
+
+# Issue Creation Instructions
+
+## Using GitHub CLI (gh)
+
+```bash
+# Authenticate (if not already)
+gh auth login
+
+# Create issues from this document
+# For each issue, run:
+gh issue create \
+  --title "Issue Title Here" \
+  --body "$(cat issue_body.md)" \
+  --label "dev" \
+  --label "P0-Critical" \
+  --assignee "your-username"
+
+# Example for Issue #1:
+gh issue create \
+  --title "Add Audio Capture Support" \
+  --body "$(cat issue_01_body.md)" \
+  --label "dev" \
+  --label "P0-Critical"
+```
+
+## Using GitHub Web UI
+
+1. Navigate to repository: https://github.com/bobb-Rob/trace-qa-2nd/issues
+2. Click "New Issue"
+3. Copy title from this document
+4. Copy issue body (Description through Dependencies)
+5. Add appropriate labels (dev/test/refactor, priority)
+6. Click "Submit new issue"
+7. Repeat for all 34 issues
+
+## Bulk Creation Script
+
+A script has been prepared to create all issues programmatically. See `/scripts/create_issues.sh` for automation.
+
+---
+
+# Appendix A: Label Definitions
+
+## Task Type Labels
+
+| Label | Description | Color |
+|-------|-------------|-------|
+| `dev` | New implementation or feature completion | `#0E8A16` (green) |
+| `refactor` | Cleanup, restructuring, or technical debt | `#FBCA04` (yellow) |
+
+**Note:** The `test` label has been removed as all testing is now integrated into dev issues.
+
+## Priority Labels
+
+| Label | Description | Color |
+|-------|-------------|-------|
+| `P0-Critical` | Release blockers, must be completed first | `#D73A4A` (red) |
+| `P1-High` | Important features, should be completed soon | `#E99695` (light red) |
+| `P2-Medium` | Nice-to-have improvements | `#FEF2C0` (light yellow) |
+| `P3-Low` | Low priority, can be deferred | `#C5DEF5` (light blue) |
+
+## Status Labels (Optional)
+
+| Label | Description |
+|-------|-------------|
+| `in-progress` | Currently being worked on |
+| `blocked` | Blocked by dependencies |
+| `needs-review` | Ready for code review |
+| `needs-testing` | Ready for QA testing |
+
+---
+
+# Appendix B: Issue Dependencies Graph
+
+```
+Critical Path (Sprint 1 - Must Complete First):
+#1 (Audio) ──→ Must complete before R2 Upload
+#2 (R2 Upload) ──→ Needed for sharing
+#8 (Preview Overlay - Basic) ──→ Basic playback and share
+#26 (Remove Deps) ──→ Clean up before building more
+
+Feature Development Path:
+#3 (Trim) ──→ Can integrate into preview overlay later
+#4 (Blur) ──→ Can integrate into preview overlay later
+#5 (Retry) ──→ Enhances reliability
+#6 (Flags) ──→ Adds value to recordings
+
+State Management Path:
+#14 (State Persistence) ──→ Critical for reliability
+#15 (Service Worker Recovery) ──→ Depends on #14
+#16 (Watchdog Timer) ──→ Monitors state health
+
+Refactoring Path (Low Risk):
+#27 (Refactor Background) - independent
+#28 (Logging) - independent
+#29 (Strict Mode) - independent
+#30 (Bundle Size) - independent
+#31 (Error Messages) - independent
+```
+
+---
+
+# Key Changes Summary
+
+## Changes Made Per Code Review
+
+1. **Merged Test Issues into Dev Issues**
+   - Removed standalone test issues #21-28
+   - Merged all testing requirements into corresponding dev issues
+   - Each dev issue now has comprehensive "Testing Requirements" section
+   - Reduced total issues from 42 to 34
+
+2. **Reordered Critical Issues**
+   - Audio Capture moved from #2 to #1 (P0 - Critical)
+   - R2 Upload moved from #1 to #2 (P0 - Critical)
+   - Updated all cross-references and dependencies
+
+3. **Simplified Preview Overlay**
+   - Reduced from 4 days to 2 days estimate
+   - Changed priority to P0 - Critical
+   - Moved to Sprint 1
+   - Scope limited to: replay video, pause, play, exit with URL
+   - Removed trim, blur, comments from initial scope (separate issues)
+   - Now Issue #8
+
+4. **Updated Statistics**
+   - Total Issues: 42 → 34
+   - Dev Tasks: 18 → 34 (all tasks are now dev tasks)
+   - Test Tasks: 19 → 0 (merged into dev tasks)
+   - Refactor Tasks: 5 → 6
+   - Maintained same priority distribution philosophy
+
+5. **Updated Sprint Organization**
+   - Sprint 1 now focuses on core recording capabilities
+   - Audio capture is highest priority
+   - Basic preview overlay moved to Sprint 1
+   - Testing integrated throughout
+
+---
+
+**Document End**
+
+*This document is ready for issue creation. All 34 issues follow the standardized template with integrated testing requirements.*
