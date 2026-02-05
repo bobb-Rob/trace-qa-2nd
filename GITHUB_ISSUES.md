@@ -89,7 +89,7 @@ Issues 32-34: Documentation updates
 ### Description
 Implement microphone audio capture during video recording. The UI toggle for microphone exists but is currently non-functional. Users need the ability to narrate their recordings for better bug reports and documentation.
 
-Audio should come first before R2 upload as it's a fundamental recording capability that users will expect.
+Audio should come first before R2 upload as it's a fundamental recording capability that users will expect. Audio mixing is essential for complete recordings and must be implemented before building the upload pipeline.
 
 ### Scope
 - Included:
