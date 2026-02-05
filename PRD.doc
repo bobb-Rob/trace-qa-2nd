@@ -1,0 +1,1003 @@
+# TraceQA - Product Requirements & Test Readiness Document
+
+**Version:** 1.0
+**Date:** 2026-02-04
+**Status:** Ready for Manual Testing
+**Phase:** 0 (Media Stability)
+
+---
+
+## Table of Contents
+
+1. [Product Scope](#1-product-scope)
+2. [Functional Requirements (Implemented)](#2-functional-requirements-implemented)
+3. [Test Readiness Status](#3-test-readiness-status)
+4. [Manual Test Cases](#4-manual-test-cases)
+5. [Non-Functional Testing](#5-non-functional-testing)
+6. [Traceability Matrix](#6-traceability-matrix)
+
+---
+
+## 1. Product Scope
+
+### 1.1 Scope Definition (Current Implementation)
+
+TraceQA Phase 0 delivers a Chrome extension capable of:
+
+- Recording browser tab, window, or full desktop video
+- Configurable video quality (SD 480p / HD 720p)
+- In-page floating control pane during TAB recording
+- Pause and resume recording capability
+- Download completed recordings as .webm files
+- Graceful handling of external stop events (user clicks "Stop sharing")
+- State persistence across popup close and service worker restarts
+- Automatic size limit enforcement with warnings
+
+### 1.2 Explicit Exclusions (Out of Phase 0)
+
+The following features are **NOT** part of this phase and should **NOT** be tested:
+
+| Feature | Reason |
+|---------|--------|
+| Cloud upload (R2/S3) | Deferred - downloads locally instead |
+| Shareable links | Requires cloud infrastructure |
+| Video trimming/editing | Deferred to future phase |
+| Blur regions | Deferred to future phase |
+| Microphone audio capture | UI present but backend not implemented |
+| Console/network capture | Deferred to future phase |
+| Session flags | Deferred to future phase |
+| WorkItem creation | Deferred to future phase |
+| Test code generation | Deferred to future phase |
+| Dashboard integration | Not implemented |
+| External integrations (Jira/Linear) | Not implemented |
+| Keyboard shortcuts | Listener exists but no functionality |
+
+### 1.3 Environment Requirements
+
+| Requirement | Value |
+|-------------|-------|
+| Browser | Chrome 120+ |
+| Extension | Loaded from `dist/` folder |
+| OS | Windows, macOS, Linux |
+| Display | Any resolution (captures native) |
+
+---
+
+## 2. Functional Requirements (Implemented)
+
+### FR-001: Start Recording
+
+**Description:** User can initiate a video recording session from the popup UI.
+
+**Intended Behavior:**
+1. User opens extension popup
+2. User optionally adjusts video settings
+3. User clicks "Start Recording" button
+4. Chrome displays screen/tab/window picker
+5. User selects capture source
+6. Recording begins
+7. UI updates to show recording state
+
+**Entry Criteria:**
+- Extension is installed and enabled
+- No recording currently in progress
+- User is on a valid web page (for TAB mode)
+
+**Exit Criteria:**
+- Recording has started
+- Timer displays elapsed time
+- Status indicator shows "Recording in progress"
+
+**Dependencies:**
+- Background service worker active
+- Offscreen document created successfully
+- User grants screen capture permission
+
+**Edge Cases:**
+- User cancels screen picker -> returns to IDLE
+- Permission denied -> error message displayed
+- Offscreen document fails to create -> error message displayed
+- Service worker was previously terminated -> auto-recovery
+
+### FR-002: Stop Recording
+
+**Description:** User can stop an active recording and receive the video file.
+
+**Intended Behavior:**
+1. User clicks "Stop Recording" (popup or floating pane)
+2. Recording stops
+3. Video blob is finalized
+4. File downloads automatically as .webm
+5. UI returns to idle state
+
+**Entry Criteria:**
+- Recording is active (RECORDING or PAUSED state)
+
+**Exit Criteria:**
+- Recording has stopped
+- File has been downloaded
+- State returns to IDLE
+- Floating pane hidden (if shown)
+
+**Dependencies:**
+- Valid recording session
+- Offscreen document still active
+- IndexedDB available for blob storage
+
+**Edge Cases:**
+- Very short recording (< 1 second)
+- Large recording (near 100MB limit)
+- Stop while paused
+- Download fails -> error shown
+
+### FR-003: External Stop (Stop Sharing)
+
+**Description:** System gracefully handles when user clicks "Stop sharing" in Chrome's native UI instead of using extension controls.
+
+**Intended Behavior:**
+1. User clicks "Stop sharing" button in Chrome's tab indicator
+2. System detects stream ended event
+3. Recording stops gracefully
+4. Video blob is finalized and saved
+5. Download triggers automatically
+6. UI returns to idle state
+
+**Entry Criteria:**
+- Recording is active
+- Chrome is showing "Stop sharing" indicator
+
+**Exit Criteria:**
+- Recording saved despite external stop
+- File downloaded
+- State returns to IDLE
+
+**Edge Cases:**
+- External stop while paused
+- External stop during very short recording
+- Tab close during recording (similar behavior)
+
+### FR-004: Pause Recording
+
+**Description:** User can pause an active recording to temporarily stop capturing.
+
+**Intended Behavior:**
+1. User clicks pause button in floating pane
+2. MediaRecorder pauses
+3. Timer stops counting
+4. Recording indicator changes to amber/paused state
+5. Data accumulation stops but stream stays alive
+
+**Entry Criteria:**
+- Recording is in RECORDING state
+- Floating pane is visible (TAB mode)
+
+**Exit Criteria:**
+- State transitions to PAUSED
+- Timer frozen
+- Indicator shows paused state
+
+**Edge Cases:**
+- Pause immediately after start
+- Multiple rapid pause attempts (should be idempotent)
+
+### FR-005: Resume Recording
+
+**Description:** User can resume a paused recording to continue capturing.
+
+**Intended Behavior:**
+1. User clicks play/resume button in floating pane
+2. MediaRecorder resumes
+3. Timer continues from where it left off
+4. Recording indicator returns to red/recording state
+5. Paused duration excluded from total time
+
+**Entry Criteria:**
+- Recording is in PAUSED state
+
+**Exit Criteria:**
+- State transitions to RECORDING
+- Timer resumes
+- Duration calculation excludes paused period
+
+**Edge Cases:**
+- Resume after very long pause
+- Multiple rapid resume attempts
+- Stop during pause (bypass resume)
+
+### FR-006: Video Quality Settings
+
+**Description:** User can configure video quality before recording.
+
+**Intended Behavior:**
+1. User selects quality: SD (480p) or HD (720p)
+2. Setting persists in chrome.storage
+3. Next recording uses selected quality
+
+**Entry Criteria:**
+- Not currently recording
+
+**Exit Criteria:**
+- Setting saved
+- Next recording uses new setting
+
+**Edge Cases:**
+- Change setting during recording (should be disabled)
+
+### FR-007: Capture Mode Selection
+
+**Description:** User can select what to capture (tab, window, or desktop).
+
+**Intended Behavior:**
+1. User selects capture mode before recording
+2. Chrome picker filters to show appropriate options
+3. TAB mode shows floating pane
+4. DESKTOP/WINDOW modes do not show floating pane
+
+**Entry Criteria:**
+- Not currently recording
+
+**Exit Criteria:**
+- Chrome picker shows correct options
+- Recording captures selected source
+
+**Edge Cases:**
+- Switch from TAB to DESKTOP mode
+
+### FR-008: Floating Control Pane
+
+**Description:** Draggable overlay control appears during TAB recording.
+
+**Intended Behavior:**
+1. Pane appears at bottom-center when TAB recording starts
+2. Shows recording indicator (red pulsing dot)
+3. Shows elapsed time
+4. Provides pause, mute (disabled), and stop buttons
+5. Can be dragged anywhere in viewport
+6. Position constrained to viewport bounds
+7. Hidden when recording ends
+
+**Entry Criteria:**
+- Recording started in TAB mode
+- Content script injected successfully
+
+**Exit Criteria:**
+- Pane visible
+- Controls functional
+- Position saved on drag
+
+**Edge Cases:**
+- Tab navigation during recording (re-inject script)
+- Very small viewport
+- Multiple tabs open
+
+### FR-009: Size Limit Enforcement
+
+**Description:** System enforces 100MB file size limit with warnings.
+
+**Intended Behavior:**
+1. System tracks accumulated chunk sizes
+2. Warning displayed at 80% (80MB)
+3. Recording auto-stops at 100MB
+4. Partial recording is saved
+
+**Entry Criteria:**
+- Recording active
+
+**Exit Criteria:**
+- Warning shown at 80%
+- Auto-stop at 100%
+- Video file saved
+
+**Edge Cases:**
+- Size jumps over 80% in single chunk
+- Very high bitrate causing rapid size growth
+
+### FR-010: State Persistence
+
+**Description:** Recording state survives popup close and service worker restarts.
+
+**Intended Behavior:**
+1. State written to chrome.storage.local on every transition
+2. Popup re-reads state when opened
+3. Service worker restores FSM context on wake
+4. Recording continues uninterrupted
+
+**Entry Criteria:**
+- Recording is active
+
+**Exit Criteria:**
+- Close and reopen popup shows correct state
+- Service worker restart preserves recording
+
+**Edge Cases:**
+- Popup closed during STARTING state
+- Service worker dies during STOPPING
+
+---
+
+## 3. Test Readiness Status
+
+### 3.1 Feature Readiness Matrix
+
+| Feature | Ready for Testing | Blockers | Required Setup |
+|---------|-------------------|----------|----------------|
+| FR-001: Start Recording | Yes | None | Load extension |
+| FR-002: Stop Recording | Yes | None | Active recording |
+| FR-003: External Stop | Yes | None | Active recording |
+| FR-004: Pause Recording | Yes | None | Active TAB recording |
+| FR-005: Resume Recording | Yes | None | Paused recording |
+| FR-006: Video Quality | Yes | None | None |
+| FR-007: Capture Mode | Yes | None | None |
+| FR-008: Floating Pane | Yes | None | TAB recording mode |
+| FR-009: Size Limits | Partial | Requires long recording | HD mode, active recording |
+| FR-010: State Persistence | Yes | None | Active recording |
+
+### 3.2 Test Environment Setup
+
+1. **Load Extension:**
+   - Run `npm run build` in `apps/extension-trace-qa`
+   - Open `chrome://extensions/`
+   - Enable Developer Mode
+   - Load unpacked from `dist/` folder
+
+2. **Test Page:**
+   - Any web page works for TAB mode
+   - For content testing, use a page with scrollable content
+
+3. **Downloads Folder:**
+   - Ensure Chrome downloads folder is accessible
+   - Clear old TraceQA recordings before testing
+
+4. **Chrome DevTools (optional):**
+   - Open extension service worker: `chrome://extensions/` -> "Inspect views: service worker"
+   - Open popup DevTools: Right-click extension icon -> "Inspect popup"
+
+---
+
+## 4. Manual Test Cases
+
+### 4.1 Start Recording (FR-001)
+
+#### TC-001: Basic Tab Recording Start
+
+**Priority:** P0 (Critical)
+
+**Preconditions:**
+- Extension installed and enabled
+- No active recording
+- On a regular web page
+
+**Steps:**
+1. Click TraceQA extension icon to open popup
+2. Verify settings show (Quality: HD, Mode: Tab)
+3. Click "Start Recording" button
+4. Chrome screen picker appears
+5. Select "Tab" option
+6. Select the current tab
+7. Click "Share"
+
+**Expected Results:**
+- Popup shows "Recording in progress" with red pulsing indicator
+- Timer starts at 00:00 and increments
+- Floating pane appears at bottom of page
+- Floating pane shows red pulsing dot and timer
+
+---
+
+#### TC-002: Desktop Recording Start
+
+**Priority:** P1 (High)
+
+**Preconditions:**
+- Extension installed
+- Capture mode set to "Desktop"
+
+**Steps:**
+1. Open popup
+2. Change capture mode to "Desktop"
+3. Click "Start Recording"
+4. Select "Entire Screen" in picker
+5. Click "Share"
+
+**Expected Results:**
+- Recording starts
+- No floating pane appears (desktop mode)
+- Popup shows recording state
+
+---
+
+#### TC-003: Permission Denied
+
+**Priority:** P1 (High)
+
+**Preconditions:**
+- Extension installed
+
+**Steps:**
+1. Open popup
+2. Click "Start Recording"
+3. When picker appears, click "Cancel" or press Escape
+
+**Expected Results:**
+- Popup returns to idle state
+- No error message shown (permission cancel is graceful)
+- Can attempt to start recording again
+
+---
+
+#### TC-004: Start While Already Recording
+
+**Priority:** P2 (Medium)
+
+**Preconditions:**
+- Recording already active
+
+**Steps:**
+1. Close popup
+2. Reopen popup
+3. Observe UI state
+4. Attempt to start new recording
+
+**Expected Results:**
+- Popup shows recording in progress
+- Start button changes to Stop button
+- Cannot start duplicate recording
+
+---
+
+### 4.2 Stop Recording (FR-002)
+
+#### TC-005: Basic Stop via Popup
+
+**Priority:** P0 (Critical)
+
+**Preconditions:**
+- Recording active
+
+**Steps:**
+1. Open popup
+2. Click "Stop Recording"
+3. Wait for processing
+
+**Expected Results:**
+- Recording stops
+- File downloads as `traceqa-{sessionId}-{timestamp}.webm`
+- Popup returns to idle state
+- Timer resets
+- Floating pane disappears (if shown)
+
+---
+
+#### TC-006: Stop via Floating Pane
+
+**Priority:** P0 (Critical)
+
+**Preconditions:**
+- TAB recording active
+- Floating pane visible
+
+**Steps:**
+1. Click Stop button (square icon) on floating pane
+
+**Expected Results:**
+- Recording stops
+- File downloads
+- Floating pane disappears
+- Popup (if open) returns to idle
+
+---
+
+#### TC-007: Stop Very Short Recording
+
+**Priority:** P2 (Medium)
+
+**Preconditions:**
+- Recording just started (< 2 seconds)
+
+**Steps:**
+1. Start recording
+2. Immediately click Stop
+
+**Expected Results:**
+- Recording stops
+- Short video file downloads
+- No errors
+
+---
+
+### 4.3 External Stop (FR-003)
+
+#### TC-008: Stop Sharing Button
+
+**Priority:** P0 (Critical)
+
+**Preconditions:**
+- TAB recording active
+- Chrome showing "Stop sharing" indicator in tab
+
+**Steps:**
+1. Click "Stop sharing" button in Chrome's tab/address bar area
+
+**Expected Results:**
+- Recording stops gracefully
+- Video file downloads with all captured content
+- Popup shows idle state
+- Floating pane disappears
+
+---
+
+#### TC-009: Close Tab During Recording
+
+**Priority:** P1 (High)
+
+**Preconditions:**
+- TAB recording active
+
+**Steps:**
+1. Close the tab being recorded (Ctrl+W)
+
+**Expected Results:**
+- Recording stops
+- Video file downloads
+- Extension state returns to IDLE
+
+---
+
+### 4.4 Pause/Resume (FR-004, FR-005)
+
+#### TC-010: Basic Pause and Resume
+
+**Priority:** P0 (Critical)
+
+**Preconditions:**
+- TAB recording active
+- Floating pane visible
+
+**Steps:**
+1. Note current timer value (e.g., 00:10)
+2. Click Pause button on floating pane
+3. Wait 5 seconds
+4. Verify timer is frozen
+5. Click Play/Resume button
+6. Wait 5 seconds
+7. Stop recording
+
+**Expected Results:**
+- Timer freezes when paused
+- Recording dot changes to amber
+- Timer resumes when resumed
+- Final duration excludes paused time (should be ~20 seconds, not 25)
+
+---
+
+#### TC-011: Stop While Paused
+
+**Priority:** P1 (High)
+
+**Preconditions:**
+- Recording paused
+
+**Steps:**
+1. Start recording
+2. Pause recording
+3. Click Stop (while still paused)
+
+**Expected Results:**
+- Recording stops successfully
+- Video file downloads
+- State returns to IDLE
+
+---
+
+#### TC-012: External Stop While Paused
+
+**Priority:** P1 (High)
+
+**Preconditions:**
+- Recording paused
+
+**Steps:**
+1. Start TAB recording
+2. Pause recording
+3. Click "Stop sharing" in Chrome
+
+**Expected Results:**
+- Recording stops gracefully
+- Video file downloads
+- State returns to IDLE
+
+---
+
+#### TC-013: Multiple Pause/Resume Cycles
+
+**Priority:** P2 (Medium)
+
+**Preconditions:**
+- TAB recording active
+
+**Steps:**
+1. Pause for 3 seconds, resume
+2. Record for 5 seconds
+3. Pause for 3 seconds, resume
+4. Record for 5 seconds
+5. Stop recording
+
+**Expected Results:**
+- Final duration ~10 seconds (excludes 6 seconds paused)
+- Video plays correctly without gaps
+
+---
+
+### 4.5 Video Quality (FR-006)
+
+#### TC-014: SD Quality Recording
+
+**Priority:** P1 (High)
+
+**Preconditions:**
+- No active recording
+
+**Steps:**
+1. Open popup
+2. Select "SD (480p)" quality
+3. Start and complete a short recording
+4. Check downloaded file properties
+
+**Expected Results:**
+- File size smaller than HD equivalent
+- Video resolution approximately 854x480
+
+---
+
+#### TC-015: HD Quality Recording
+
+**Priority:** P1 (High)
+
+**Preconditions:**
+- No active recording
+
+**Steps:**
+1. Open popup
+2. Select "HD (720p)" quality
+3. Start and complete a short recording
+4. Check downloaded file properties
+
+**Expected Results:**
+- Video resolution approximately 1280x720
+- Higher bitrate visible in file size
+
+---
+
+### 4.6 Floating Pane (FR-008)
+
+#### TC-016: Floating Pane Drag
+
+**Priority:** P1 (High)
+
+**Preconditions:**
+- TAB recording active
+- Floating pane visible
+
+**Steps:**
+1. Click and drag floating pane to top-left corner
+2. Release
+3. Drag to top-right corner
+4. Drag to bottom-right corner
+
+**Expected Results:**
+- Pane follows cursor during drag
+- Pane constrained to viewport (doesn't go off-screen)
+- Position saved after release
+
+---
+
+#### TC-017: Floating Pane Timer Accuracy
+
+**Priority:** P1 (High)
+
+**Preconditions:**
+- TAB recording active
+
+**Steps:**
+1. Note timer value
+2. Count 30 seconds manually
+3. Compare timer
+
+**Expected Results:**
+- Timer matches real elapsed time within 1 second
+
+---
+
+#### TC-018: Floating Pane Persistence on Navigation
+
+**Priority:** P2 (Medium)
+
+**Preconditions:**
+- TAB recording active
+- Floating pane visible
+
+**Steps:**
+1. Click a link on the page to navigate
+2. Observe floating pane after navigation
+
+**Expected Results:**
+- Content script re-injected
+- Floating pane reappears
+- Recording continues
+
+---
+
+### 4.7 State Persistence (FR-010)
+
+#### TC-019: Close and Reopen Popup
+
+**Priority:** P0 (Critical)
+
+**Preconditions:**
+- Recording active
+
+**Steps:**
+1. Start recording
+2. Close popup (click elsewhere)
+3. Wait 5 seconds
+4. Reopen popup
+
+**Expected Results:**
+- Popup shows "Recording in progress"
+- Timer shows correct elapsed time
+- Stop button is available
+
+---
+
+#### TC-020: Service Worker Recovery
+
+**Priority:** P1 (High)
+
+**Preconditions:**
+- Recording active
+
+**Steps:**
+1. Start recording
+2. Open `chrome://extensions/`
+3. Find TraceQA and click "Inspect views: service worker"
+4. In DevTools, click "terminate" or close the window
+5. Wait 2 seconds
+6. Open extension popup
+
+**Expected Results:**
+- Recording continues (offscreen holds MediaRecorder)
+- Popup shows correct state
+- Can stop recording successfully
+
+---
+
+### 4.8 Size Limits (FR-009)
+
+#### TC-021: Size Warning at 80%
+
+**Priority:** P2 (Medium)
+
+**Preconditions:**
+- HD mode selected
+- Prepared for long recording (~20+ minutes)
+
+**Steps:**
+1. Start HD recording
+2. Record until ~80MB reached
+3. Observe console/UI for warning
+
+**Expected Results:**
+- Warning logged to console at 80MB
+- Recording continues
+
+**Note:** This test requires patience due to file size requirements.
+
+---
+
+#### TC-022: Auto-Stop at 100MB
+
+**Priority:** P2 (Medium)
+
+**Preconditions:**
+- HD mode selected
+
+**Steps:**
+1. Start HD recording
+2. Let it run until 100MB limit
+
+**Expected Results:**
+- Recording auto-stops
+- File downloads with all data up to limit
+- No data loss
+
+---
+
+### 4.9 Error Handling
+
+#### TC-023: Network Disconnection During Recording
+
+**Priority:** P2 (Medium)
+
+**Preconditions:**
+- Recording active
+
+**Steps:**
+1. Start recording
+2. Disconnect network (airplane mode)
+3. Continue recording
+4. Stop recording
+
+**Expected Results:**
+- Recording works offline (no cloud dependency)
+- File downloads locally
+
+---
+
+#### TC-024: Multiple Extension Instances
+
+**Priority:** P2 (Medium)
+
+**Preconditions:**
+- Extension installed
+
+**Steps:**
+1. Open popup in window 1
+2. Start recording
+3. Open popup in window 2
+
+**Expected Results:**
+- Both popups show same recording state
+- Only one recording active
+
+---
+
+### 4.10 Negative Test Cases
+
+#### TC-025: Double-Click Start Button
+
+**Priority:** P2 (Medium)
+
+**Steps:**
+1. Rapidly double-click "Start Recording"
+
+**Expected Results:**
+- Only one recording starts
+- No duplicate sessions
+
+---
+
+#### TC-026: Stop Non-Existent Recording
+
+**Priority:** P3 (Low)
+
+**Steps:**
+1. Use developer tools to send STOP_RECORDING message with invalid sessionId
+
+**Expected Results:**
+- Error response: "Session mismatch" or "No active recording"
+- No crash
+
+---
+
+#### TC-027: Pause When Not Recording
+
+**Priority:** P3 (Low)
+
+**Steps:**
+1. Via DevTools, send pause message when not recording
+
+**Expected Results:**
+- Error response: "Not recording"
+- No state corruption
+
+---
+
+---
+
+## 5. Non-Functional Testing
+
+### 5.1 Performance Considerations
+
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| Recording start time | < 3 seconds | Time from click to recording |
+| Memory usage | < 500MB | Chrome task manager during recording |
+| CPU usage | < 30% | During HD recording |
+| File size accuracy | 1 Mbps (SD) / 2.5 Mbps (HD) | Bytes / duration |
+
+### 5.2 Reliability and Stability
+
+| Scenario | Expected Behavior |
+|----------|-------------------|
+| 30-minute recording | Completes without crash |
+| Rapid start/stop cycles | State remains consistent |
+| Popup open/close 50 times | No memory leak |
+| Service worker termination | Self-heals, recording continues |
+
+### 5.3 Error Handling and Recovery
+
+| Error Scenario | Expected Recovery |
+|----------------|-------------------|
+| Permission denied | Returns to IDLE, no error lingering |
+| Offscreen document crash | Error shown, state reset to IDLE |
+| IndexedDB quota exceeded | Error shown, partial save if possible |
+| Chrome crash during recording | Data lost (expected limitation) |
+
+### 5.4 Logging and Observability
+
+| Log Type | Location | Content |
+|----------|----------|---------|
+| FSM transitions | Service worker console | State changes with reasons |
+| Message routing | Service worker console | Message types received |
+| Offscreen events | Offscreen console | MediaRecorder events |
+| Content script | Page console | Floating pane lifecycle |
+
+---
+
+## 6. Traceability Matrix
+
+### 6.1 Feature to Test Case Mapping
+
+| Feature | Test Cases |
+|---------|------------|
+| FR-001: Start Recording | TC-001, TC-002, TC-003, TC-004, TC-025 |
+| FR-002: Stop Recording | TC-005, TC-006, TC-007, TC-026 |
+| FR-003: External Stop | TC-008, TC-009 |
+| FR-004: Pause Recording | TC-010, TC-027 |
+| FR-005: Resume Recording | TC-010, TC-011, TC-012, TC-013 |
+| FR-006: Video Quality | TC-014, TC-015 |
+| FR-007: Capture Mode | TC-001, TC-002 |
+| FR-008: Floating Pane | TC-006, TC-016, TC-017, TC-018 |
+| FR-009: Size Limits | TC-021, TC-022 |
+| FR-010: State Persistence | TC-019, TC-020 |
+
+### 6.2 High-Risk Areas Requiring Deeper Coverage
+
+| Area | Risk Level | Reason | Recommended Tests |
+|------|------------|--------|-------------------|
+| FSM Transitions | High | Core state management | All state transitions |
+| External Stop | High | Edge case, data loss risk | TC-008, TC-009, TC-012 |
+| Pause Timing | Medium | Duration calculation | TC-010, TC-013 |
+| State Persistence | Medium | Service worker lifecycle | TC-019, TC-020 |
+| Content Script Injection | Medium | Dynamic injection | TC-018 |
+
+### 6.3 Test Prioritization
+
+**P0 (Must Pass - Release Blockers):**
+- TC-001: Basic Tab Recording Start
+- TC-005: Basic Stop via Popup
+- TC-006: Stop via Floating Pane
+- TC-008: Stop Sharing Button
+- TC-010: Basic Pause and Resume
+- TC-019: Close and Reopen Popup
+
+**P1 (Should Pass):**
+- TC-002, TC-003, TC-004, TC-009, TC-011, TC-012, TC-014, TC-015, TC-016, TC-017, TC-020
+
+**P2 (Nice to Have):**
+- TC-007, TC-013, TC-018, TC-021, TC-022, TC-023, TC-024, TC-025
+
+**P3 (Low Priority):**
+- TC-026, TC-027
+
+---
+
+## Appendix A: Test Data Requirements
+
+| Test | Required Data |
+|------|---------------|
+| All recording tests | Any web page (e.g., example.com) |
+| Navigation test (TC-018) | Page with clickable links |
+| Size limit tests | 20+ minutes recording time |
+
+## Appendix B: Known Issues
+
+| Issue | Impact | Workaround |
+|-------|--------|------------|
+| Microphone toggle non-functional | Audio not captured | None (deferred feature) |
+| Keyboard shortcuts inactive | No hotkey recording start | Use popup UI |
+| Dashboard links non-functional | 404 on click | External links only |
+
+---
+
+**Document End**
