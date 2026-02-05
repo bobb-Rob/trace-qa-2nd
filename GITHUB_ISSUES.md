@@ -208,7 +208,7 @@ The upload pipeline should handle chunked uploads for large files, provide progr
 - Use multipart upload for files >10MB
 - Store upload state in chrome.storage.local for recovery
 - Consider using tus protocol for resumable uploads
-- Chunk size should balance network efficiency and memory usage (recommended: 5MB chunks for files >10MB)
+- Chunk size of 5MB balances network efficiency (fewer HTTP requests) with memory usage (manageable chunk size in browser)
 
 ---
 
@@ -488,8 +488,8 @@ Build a basic post-recording preview overlay that appears after stopping a recor
   - Trim controls (Issue #3)
   - Blur region editor (Issue #4)
   - Comments panel (Issue #12)
-  - Advanced video effects
   - Timeline markers (Issue #6)
+  - Advanced video effects
   - Collaborative editing
   - Version history
 
@@ -524,7 +524,7 @@ Build a basic post-recording preview overlay that appears after stopping a recor
 ### Notes
 - Keep this simple - just playback and exit with URL
 - More advanced features (trim, blur, comments) are separate issues
-- Focus on fast, reliable basic functionality
+- Design should include extension points for future integration of trim/blur controls
 
 ---
 
