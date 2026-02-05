@@ -13,6 +13,7 @@ describe('RecordingButton', () => {
     isPaused: false,
     onStart: vi.fn(),
     onStop: vi.fn(),
+    onResume: vi.fn(),
   };
 
   beforeEach(() => {
@@ -30,9 +31,9 @@ describe('RecordingButton', () => {
       expect(screen.getByText('Stop Recording')).toBeInTheDocument();
     });
 
-    it('should show "Recording Paused" when paused', () => {
+    it('should show "Resume Recording" when paused', () => {
       render(<RecordingButton {...defaultProps} isRecording={true} isPaused={true} />);
-      expect(screen.getByText('Recording Paused')).toBeInTheDocument();
+      expect(screen.getByText('Resume Recording')).toBeInTheDocument();
     });
   });
 
@@ -51,6 +52,24 @@ describe('RecordingButton', () => {
 
       fireEvent.click(screen.getByRole('button'));
       expect(onStop).toHaveBeenCalledTimes(1);
+    });
+
+    it('should call onResume when clicked and paused', () => {
+      const onResume = vi.fn();
+      render(<RecordingButton {...defaultProps} isRecording={true} isPaused={true} onResume={onResume} />);
+
+      fireEvent.click(screen.getByRole('button'));
+      expect(onResume).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not call onStop when clicked and paused', () => {
+      const onStop = vi.fn();
+      const onResume = vi.fn();
+      render(<RecordingButton {...defaultProps} isRecording={true} isPaused={true} onStop={onStop} onResume={onResume} />);
+
+      fireEvent.click(screen.getByRole('button'));
+      expect(onStop).not.toHaveBeenCalled();
+      expect(onResume).toHaveBeenCalledTimes(1);
     });
 
     it('should not call any handler when disabled', () => {
@@ -140,6 +159,11 @@ describe('RecordingButton', () => {
     it('should have stop-recording-btn test id when recording', () => {
       render(<RecordingButton {...defaultProps} isRecording={true} />);
       expect(screen.getByTestId('stop-recording-btn')).toBeInTheDocument();
+    });
+
+    it('should have resume-recording-btn test id when paused', () => {
+      render(<RecordingButton {...defaultProps} isRecording={true} isPaused={true} />);
+      expect(screen.getByTestId('resume-recording-btn')).toBeInTheDocument();
     });
   });
 

@@ -34,6 +34,7 @@ describe('Popup', () => {
 
   const mockStartRecording = vi.fn();
   const mockStopRecording = vi.fn();
+  const mockResumeRecording = vi.fn();
   const mockSetVideoConfig = vi.fn();
 
   beforeEach(() => {
@@ -44,6 +45,7 @@ describe('Popup', () => {
       setVideoConfig: mockSetVideoConfig,
       startRecording: mockStartRecording,
       stopRecording: mockStopRecording,
+      resumeRecording: mockResumeRecording,
     });
   });
 
@@ -104,6 +106,7 @@ describe('Popup', () => {
         setVideoConfig: mockSetVideoConfig,
         startRecording: mockStartRecording,
         stopRecording: mockStopRecording,
+        resumeRecording: mockResumeRecording,
       });
 
       render(<Popup />);
@@ -124,6 +127,7 @@ describe('Popup', () => {
         setVideoConfig: mockSetVideoConfig,
         startRecording: mockStartRecording,
         stopRecording: mockStopRecording,
+        resumeRecording: mockResumeRecording,
       });
 
       render(<Popup />);
@@ -151,6 +155,7 @@ describe('Popup', () => {
         setVideoConfig: mockSetVideoConfig,
         startRecording: mockStartRecording,
         stopRecording: mockStopRecording,
+        resumeRecording: mockResumeRecording,
       });
 
       render(<Popup />);
@@ -159,6 +164,47 @@ describe('Popup', () => {
 
       await waitFor(() => {
         expect(mockStopRecording).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('should call resumeRecording when resume button clicked (paused state)', async () => {
+      mockResumeRecording.mockResolvedValue(undefined);
+      mockUseRecordingState.mockReturnValue({
+        state: { ...defaultState, isRecording: true, isPaused: true },
+        videoConfig: defaultVideoConfig,
+        setVideoConfig: mockSetVideoConfig,
+        startRecording: mockStartRecording,
+        stopRecording: mockStopRecording,
+        resumeRecording: mockResumeRecording,
+      });
+
+      render(<Popup />);
+
+      fireEvent.click(screen.getByTestId('resume-recording-btn'));
+
+      await waitFor(() => {
+        expect(mockResumeRecording).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('should show error when resumeRecording fails', async () => {
+      mockResumeRecording.mockRejectedValue(new Error('Resume failed'));
+      mockUseRecordingState.mockReturnValue({
+        state: { ...defaultState, isRecording: true, isPaused: true },
+        videoConfig: defaultVideoConfig,
+        setVideoConfig: mockSetVideoConfig,
+        startRecording: mockStartRecording,
+        stopRecording: mockStopRecording,
+        resumeRecording: mockResumeRecording,
+      });
+
+      render(<Popup />);
+
+      fireEvent.click(screen.getByTestId('resume-recording-btn'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('error-message')).toBeInTheDocument();
+        expect(screen.getByText('Resume failed')).toBeInTheDocument();
       });
     });
 
@@ -182,6 +228,7 @@ describe('Popup', () => {
         setVideoConfig: mockSetVideoConfig,
         startRecording: mockStartRecording,
         stopRecording: mockStopRecording,
+        resumeRecording: mockResumeRecording,
       });
 
       render(<Popup />);
@@ -214,6 +261,7 @@ describe('Popup', () => {
         setVideoConfig: mockSetVideoConfig,
         startRecording: mockStartRecording,
         stopRecording: mockStopRecording,
+        resumeRecording: mockResumeRecording,
       });
 
       render(<Popup />);
@@ -294,6 +342,7 @@ describe('Popup', () => {
         setVideoConfig: mockSetVideoConfig,
         startRecording: mockStartRecording,
         stopRecording: mockStopRecording,
+        resumeRecording: mockResumeRecording,
       });
 
       render(<Popup />);
@@ -308,6 +357,7 @@ describe('Popup', () => {
         setVideoConfig: mockSetVideoConfig,
         startRecording: mockStartRecording,
         stopRecording: mockStopRecording,
+        resumeRecording: mockResumeRecording,
       });
 
       render(<Popup />);
@@ -323,6 +373,7 @@ describe('Popup', () => {
         setVideoConfig: mockSetVideoConfig,
         startRecording: mockStartRecording,
         stopRecording: mockStopRecording,
+        resumeRecording: mockResumeRecording,
       });
 
       render(<Popup />);

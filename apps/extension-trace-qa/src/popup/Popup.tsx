@@ -8,7 +8,7 @@ import { VideoSettings } from './components/VideoSettings';
 import { useRecordingState } from './hooks/useRecordingState';
 
 export function Popup(): React.ReactElement {
-  const { state, videoConfig, setVideoConfig, startRecording, stopRecording } = useRecordingState();
+  const { state, videoConfig, setVideoConfig, startRecording, stopRecording, resumeRecording } = useRecordingState();
   const [localError, setLocalError] = useState<string | null>(null);
 
   const handleStart = async (): Promise<void> => {
@@ -23,6 +23,15 @@ export function Popup(): React.ReactElement {
   const handleStop = async (): Promise<void> => {
     try {
       await stopRecording();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setLocalError(errorMessage);
+    }
+  };
+
+  const handleResume = async (): Promise<void> => {
+    try {
+      await resumeRecording();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setLocalError(errorMessage);
@@ -65,6 +74,7 @@ export function Popup(): React.ReactElement {
           isPaused={state.isPaused}
           onStart={handleStart}
           onStop={handleStop}
+          onResume={handleResume}
           isLoading={state.isLoading}
           disabled={state.isLoading}
         />

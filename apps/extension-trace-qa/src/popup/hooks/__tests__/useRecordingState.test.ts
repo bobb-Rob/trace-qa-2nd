@@ -632,6 +632,113 @@ describe('useRecordingState', () => {
     });
   });
 
+  describe('resumeRecording', () => {
+    it('should send UI_RESUME_REQUESTED message when paused', async () => {
+      const storageData = { isRecording: true, sessionId: 'session-123', startTime: 1234567890 };
+
+      mockStorageGet.mockImplementation((_keys, callback) => {
+        callback?.(storageData);
+        return Promise.resolve(storageData);
+      });
+
+      mockSendMessage.mockResolvedValue({ success: true });
+
+      const { result } = renderHook(() => useRecordingState());
+
+      // Wait for initial state to load
+      await waitFor(() => {
+        expect(result.current.state.isRecording).toBe(true);
+      });
+
+      // Simulate pause state via UI_STATE_UPDATE message
+      act(() => {
+        simulateRuntimeMessage({
+          type: 'UI_STATE_UPDATE',
+          payload: { sessionId: 'session-123', sessionState: 'PAUSED', isPaused: true, duration: 5000 }
+        });
+      });
+
+      await waitFor(() => {
+        expect(result.current.state.isPaused).toBe(true);
+      });
+
+      // Call resumeRecording
+      await act(async () => {
+        await result.current.resumeRecording();
+      });
+
+      expect(mockSendMessage).toHaveBeenCalledWith({
+        type: 'UI_RESUME_REQUESTED',
+        payload: { sessionId: 'session-123' },
+      });
+    });
+
+    it('should not send message when not paused', async () => {
+      const storageData = { isRecording: true, sessionId: 'session-123', startTime: 1234567890 };
+
+      mockStorageGet.mockImplementation((_keys, callback) => {
+        callback?.(storageData);
+        return Promise.resolve(storageData);
+      });
+
+      const { result } = renderHook(() => useRecordingState());
+
+      await waitFor(() => {
+        expect(result.current.state.isRecording).toBe(true);
+      });
+
+      // State is not paused, so resumeRecording should do nothing
+      await act(async () => {
+        await result.current.resumeRecording();
+      });
+
+      expect(mockSendMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'UI_RESUME_REQUESTED' })
+      );
+    });
+
+    it('should handle resume failure', async () => {
+      const storageData = { isRecording: true, sessionId: 'session-123', startTime: 1234567890 };
+
+      mockStorageGet.mockImplementation((_keys, callback) => {
+        callback?.(storageData);
+        return Promise.resolve(storageData);
+      });
+
+      mockSendMessage.mockResolvedValue({ success: false, error: 'Resume failed' });
+
+      const { result } = renderHook(() => useRecordingState());
+
+      await waitFor(() => {
+        expect(result.current.state.isRecording).toBe(true);
+      });
+
+      // Set paused state
+      act(() => {
+        simulateRuntimeMessage({
+          type: 'UI_STATE_UPDATE',
+          payload: { sessionId: 'session-123', sessionState: 'PAUSED', isPaused: true, duration: 5000 }
+        });
+      });
+
+      await waitFor(() => {
+        expect(result.current.state.isPaused).toBe(true);
+      });
+
+      // Call resumeRecording - should fail
+      await act(async () => {
+        try {
+          await result.current.resumeRecording();
+        } catch {
+          // Expected to throw
+        }
+      });
+
+      expect(result.current.state.error).toBe('Resume failed');
+      expect(result.current.state.isLoading).toBe(false);
+    });
+  });
+
   describe('stopRecording', () => {
     // Ensure clean state for each stopRecording test
     beforeEach(() => {

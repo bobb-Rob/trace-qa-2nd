@@ -19,6 +19,3 @@ error on extension.
 Context
 offscreen/index.html
 
-
-Floating pane is displayed but the pause is not stopping the count on the popup
-index.js:1 [TraceQA:Watchdog] No config for state: PAUSED

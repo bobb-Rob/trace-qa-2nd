@@ -72,6 +72,7 @@ export function useRecordingState(): {
   setVideoConfig: (config: VideoRecordingConfig) => void;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
+  resumeRecording: () => Promise<void>;
 } {
   const [state, setState] = useState<PopupRecordingState>(initialState);
   const [videoConfig, setVideoConfigState] = useState<VideoRecordingConfig>(defaultVideoConfig);
@@ -244,5 +245,31 @@ export function useRecordingState(): {
     }
   }, [state.sessionId]);
 
-  return { state, videoConfig, setVideoConfig, startRecording, stopRecording };
+  const resumeRecording = useCallback(async (): Promise<void> => {
+    if (!state.isPaused || !state.sessionId) {
+      return;
+    }
+
+    setState((prev) => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'UI_RESUME_REQUESTED',
+        payload: { sessionId: state.sessionId },
+      });
+
+      if (!response?.success) {
+        throw new Error(response?.error || 'Failed to resume recording');
+      }
+
+      // State update will come via UI_STATE_UPDATE broadcast from background
+      setState((prev) => ({ ...prev, isLoading: false }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to resume recording';
+      setState((prev) => ({ ...prev, error: errorMessage, isLoading: false }));
+      throw error;
+    }
+  }, [state.sessionId, state.isPaused]);
+
+  return { state, videoConfig, setVideoConfig, startRecording, stopRecording, resumeRecording };
 }
