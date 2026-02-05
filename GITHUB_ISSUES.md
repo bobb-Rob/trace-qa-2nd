@@ -23,8 +23,10 @@ This document contains **GitHub issue drafts** for the TraceQA Chrome Extension 
 
 ## Issue Organization
 
-### Group 1: Core Media Pipeline (P0 - Critical)
-Issues 1-7: Core video recording functionality
+### Group 1: Core Media Pipeline (P0-P2)
+Issues 1-7: Core video recording and processing functionality
+- Issues 1-5: P0-P1 Critical features
+- Issues 6-7: P2 Additional capture features
 
 ### Group 2: UI Components (P1 - High)  
 Issues 8-13: User interface and controls
@@ -154,7 +156,7 @@ The upload pipeline should handle chunked uploads for large files, provide progr
 ### Scope
 - Included:
   - R2 bucket configuration and authentication
-  - Chunked upload implementation (for files >10MB)
+  - Chunked upload implementation for large files (files >10MB use 5MB chunks)
   - Upload progress tracking
   - Pre-signed URL generation for uploads
   - Post-upload video URL generation
@@ -1728,6 +1730,8 @@ A script has been prepared to create all issues programmatically. See `/scripts/
 |-------|-------------|-------|
 | `dev` | New implementation or feature completion | `#0E8A16` (green) |
 | `refactor` | Cleanup, restructuring, or technical debt | `#FBCA04` (yellow) |
+
+**Note:** The `test` label has been removed as all testing is now integrated into dev issues.
 
 ## Priority Labels
 
