@@ -1,136 +1,148 @@
 # GitHub Issues Quick Reference
 
-This document provides a quick reference for the 42 GitHub issues defined in GITHUB_ISSUES.md.
+This document provides a quick reference for the 34 GitHub issues defined in GITHUB_ISSUES.md.
 
-## Sprint 1: Foundation & Testing (Week 1)
-**Focus:** Test coverage and cleanup
+**Note:** Testing requirements have been integrated into each dev issue. All issues now include comprehensive testing sections.
 
-| # | Title | Type | Priority | Estimate |
-|---|-------|------|----------|----------|
-| 21 | Add Popup Component Tests | test | P0 | 3 days |
-| 22 | Add Content Script Tests | test | P0 | 2 days |
-| 23 | Add Integration Tests | test | P0 | 4 days |
-| 24 | Add Edge Case Tests | test | P1 | 3 days |
-| 25 | Setup Coverage Reporting | test | P0 | 1 day |
-| 36 | Remove Unused Dependencies | refactor | P1 | 1 day |
-
-**Total:** 6 issues, 14 days
-
-## Sprint 2: Critical Features (Week 2)
-**Focus:** Core functionality implementation
+## Sprint 1: Foundation & Critical Features (Week 1-2)
+**Focus:** Audio, Upload, Core Features
 
 | # | Title | Type | Priority | Estimate |
 |---|-------|------|----------|----------|
-| 1 | Implement R2 Upload Pipeline | dev | P0 | 5 days |
-| 2 | Add Audio Capture Support | dev | P1 | 3 days |
-| 26 | Test R2 Upload Pipeline | test | P1 | 2 days |
-| 27 | Test Audio Capture | test | P1 | 2 days |
-| 6 | Add Retry Mechanism for Failures | dev | P1 | 2 days |
-
-**Total:** 5 issues, 14 days
-
-## Sprint 3: UI Enhancement (Week 3)
-**Focus:** User experience improvements
-
-| # | Title | Type | Priority | Estimate |
-|---|-------|------|----------|----------|
+| 1 | Add Audio Capture Support | dev | P0 | 3 days |
+| 2 | Implement R2 Upload Pipeline | dev | P0 | 5 days |
 | 3 | Implement Video Trimming | dev | P1 | 4 days |
 | 4 | Implement Blur Regions | dev | P1 | 5 days |
+| 5 | Add Retry Mechanism for Failures | dev | P1 | 2 days |
+| 8 | Create Preview Overlay (Basic) | dev | P0 | 2 days |
+| 26 | Remove Unused Dependencies | refactor | P1 | 1 day |
+
+**Total:** 7 issues, 22 days
+
+## Sprint 2: State Management & UI (Week 3)
+**Focus:** Persistence and controls
+
+| # | Title | Type | Priority | Estimate |
+|---|-------|------|----------|----------|
+| 14 | Implement State Persistence | dev | P0 | 2 days |
+| 15 | Add Service Worker Recovery | dev | P0 | 3 days |
 | 9 | Enhance Floating Pane Controls | dev | P1 | 2 days |
-| 28 | Test Video Trimming & Blur | test | P1 | 2 days |
 | 10 | Add Keyboard Shortcuts | dev | P2 | 2 days |
+| 16 | Implement Watchdog Timer | dev | P1 | 2 days |
 
-**Total:** 5 issues, 15 days
+**Total:** 5 issues, 11 days
 
-## Sprint 4: Polish & Documentation (Week 4)
+## Sprint 3: Collaboration Features (Week 4)
+**Focus:** Sharing and dashboard
+
+| # | Title | Type | Priority | Estimate |
+|---|-------|------|----------|----------|
+| 11 | Implement Shareable Links | dev | P1 | 3 days |
+| 12 | Add Timestamped Comments | dev | P1 | 3 days |
+| 13 | Create Dashboard Views | dev | P1 | 5 days |
+| 6 | Implement Session Flags | dev | P2 | 3 days |
+
+**Total:** 4 issues, 14 days
+
+## Sprint 4: Polish & Documentation (Week 5)
 **Focus:** Code quality and documentation
 
 | # | Title | Type | Priority | Estimate |
 |---|-------|------|----------|----------|
-| 37 | Refactor Background Service Worker | refactor | P2 | 3 days |
-| 38 | Add Structured Logging | refactor | P2 | 2 days |
-| 35 | Improve Error Messages | refactor | P2 | 2 days |
-| 41 | Update User Documentation | dev | P3 | 2 days |
-| 42 | Create Testing Documentation | dev | P3 | 1 day |
+| 27 | Refactor Background Service Worker | refactor | P2 | 3 days |
+| 28 | Add Structured Logging | refactor | P2 | 2 days |
+| 32 | Update User Documentation | dev | P3 | 2 days |
+| 33 | Create Testing Documentation | dev | P3 | 1 day |
 
-**Total:** 5 issues, 10 days
+**Total:** 4 issues, 8 days
 
 ## All Issues by Type
 
-### Development (18 issues)
-1. Implement R2 Upload Pipeline (P0, 5d)
-2. Add Audio Capture Support (P1, 3d)
-3. Implement Video Trimming (P1, 4d)
-4. Implement Blur Regions (P1, 5d)
-5. Implement Session Flags (P2, 3d)
-6. Add Retry Mechanism for Failures (P1, 2d)
-7. Implement Console/Network Capture (P2, 4d)
-8. Implement WorkItem Model (P2, 5d)
-9. Enhance Floating Pane Controls (P1, 2d)
-10. Add Keyboard Shortcuts (P2, 2d)
-11. Create Preview Overlay Component (P1, 4d)
-12. Implement Shareable Links (P1, 3d)
-13. Add Timestamped Comments (P1, 3d)
-14. Implement Recording Requests (P2, 4d)
-15. Create Dashboard Views (P1, 5d)
-16. Implement State Persistence (P0, 2d)
-17. Add Service Worker Recovery (P0, 3d)
-18. Implement Watchdog Timer (P1, 2d)
+### Development (34 issues)
+All development issues now include comprehensive testing requirements:
 
-Plus 6 more dev/error-handling issues...
+**P0 (Critical) - 8 issues:**
+1. Add Audio Capture Support (3d)
+2. Implement R2 Upload Pipeline (5d)
+8. Create Preview Overlay Component - Basic (2d)
+14. Implement State Persistence (2d)
+15. Add Service Worker Recovery (3d)
+17. Implement Recording Requests (4d)
+19. Handle Permission Denied Gracefully (1d)
+20. Handle Offscreen Document Failures (1d)
 
-### Testing (19 issues)
-21. Add Popup Component Tests (P0, 3d)
-22. Add Content Script Tests (P0, 2d)
-23. Add Integration Tests (P0, 4d)
-24. Add Edge Case Tests (P1, 3d)
-25. Setup Coverage Reporting (P0, 1d)
-26. Test R2 Upload Pipeline (P1, 2d)
-27. Test Audio Capture (P1, 2d)
-28. Test Video Trimming & Blur (P1, 2d)
+**P1 (High) - 13 issues:**
+3. Implement Video Trimming (4d)
+4. Implement Blur Regions (5d)
+5. Add Retry Mechanism for Failures (2d)
+9. Enhance Floating Pane Controls (2d)
+11. Implement Shareable Links (3d)
+12. Add Timestamped Comments (3d)
+13. Create Dashboard Views (5d)
+16. Implement Watchdog Timer (2d)
+18. Add Version Migration (2d)
+21. Add Loading States for All Actions (2d)
+26. Remove Unused Dependencies (1d)
+29. Add TypeScript Strict Mode (2d)
+30. Optimize Bundle Size (2d)
 
-Plus 11 more testing issues...
+**P2 (Medium) - 10 issues:**
+6. Implement Session Flags (3d)
+7. Implement Console/Network Capture (4d)
+10. Add Keyboard Shortcuts (2d)
+22. Handle IndexedDB Quota Exceeded (1d)
+23. Handle Tab Navigation During Recording (2d)
+25. Improve Error Messages (2d)
+27. Refactor Background Service Worker (3d)
+28. Add Structured Logging (2d)
+31. Create API Documentation (2d)
+34. Add Security Best Practices Guide (1d)
 
-### Refactoring (5 issues)
-35. Improve Error Messages (P2, 2d)
-36. Remove Unused Dependencies (P1, 1d)
-37. Refactor Background Service Worker (P2, 3d)
-38. Add Structured Logging (P2, 2d)
-39. Add TypeScript Strict Mode (P3, 2d)
-40. Optimize Bundle Size (P3, 2d)
+**P3 (Low) - 3 issues:**
+24. Handle Chrome Crash/Force Quit (2d)
+32. Update User Documentation (2d)
+33. Create Testing Documentation (1d)
 
 ## Priority Breakdown
 
 - **P0 (Critical):** 8 issues - Must complete first
-- **P1 (High):** 15 issues - Important features
-- **P2 (Medium):** 14 issues - Nice to have
-- **P3 (Low):** 5 issues - Can defer
+- **P1 (High):** 13 issues - Important features
+- **P2 (Medium):** 10 issues - Nice to have
+- **P3 (Low):** 3 issues - Can defer
 
 ## Key Dependencies
 
 ```
-Testing Foundation (Sprint 1)
-├─ #21 → Enables popup development
-├─ #22 → Enables content script development
-├─ #23 → Validates integration
-├─ #24 → Validates edge cases
-├─ #25 → Enforces quality
-└─ #36 → Cleans tech debt
+Sprint 1: Foundation & Critical Features
+├─ #1 (Audio) → Must complete first, foundational
+├─ #2 (R2 Upload) → Depends on #1 for audio mixing
+├─ #8 (Preview Overlay) → Needs #1, #2 for complete flow
+├─ #3 (Trim) + #4 (Blur) → Enhance preview
+├─ #5 (Retry) → Reliability layer for #2
+└─ #26 (Remove deps) → Tech debt cleanup
 
-Core Features (Sprint 2)
-├─ #1 → #26 (R2 tests)
-├─ #2 → #27 (Audio tests)
-└─ #6 → Improves reliability
+Sprint 2: State Management
+├─ #14 (State Persistence) → Foundation for recovery
+├─ #15 (Service Worker Recovery) → Depends on #14
+├─ #16 (Watchdog) → Monitors state from #14, #15
+└─ #9, #10 → UI enhancements (parallel)
 
-UI Features (Sprint 3)
-├─ #3 + #4 → #28 (Trim/blur tests)
-├─ #9 → Improves UX
-└─ #10 → Power user features
+Sprint 3: Collaboration
+├─ #11 (Shareable Links) → Requires #2 (R2 Upload)
+├─ #12 (Comments) → Enhances #11
+└─ #13 (Dashboard) → Displays all features
 ```
 
 ## Coverage Requirements
 
-All code must meet these thresholds:
+Each dev issue now includes comprehensive testing requirements:
+- **Unit Tests:** All modules ≥ 95% coverage
+- **Integration Tests:** Cross-component flows
+- **Edge Case Tests:** Error scenarios, race conditions  
+- **Negative Tests:** Failure paths
+- **Performance Tests:** Where applicable
+
+**Coverage Thresholds:**
 - **Line Coverage:** ≥ 95%
 - **Branch Coverage:** ≥ 95%
 - **Function Coverage:** ≥ 95%
@@ -139,9 +151,10 @@ All code must meet these thresholds:
 ## Labels to Create in GitHub
 
 ### Type Labels
-- `dev` - Green (#0E8A16)
-- `test` - Blue (#1D76DB)
-- `refactor` - Yellow (#FBCA04)
+- `dev` - Green (#0E8A16) - All issues are now dev issues with integrated testing
+- `refactor` - Yellow (#FBCA04) - Code quality improvements
+
+**Note:** `test` label has been removed. Testing is now integrated into all dev issues.
 
 ### Priority Labels
 - `P0-Critical` - Red (#D73A4A)
