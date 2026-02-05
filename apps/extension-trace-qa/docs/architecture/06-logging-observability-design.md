@@ -385,24 +385,83 @@ interface LogTransportMessage {
 
 ## Log Storage Strategy
 
-### Primary Storage: IndexedDB
+### Zero-Interference IndexedDB Design (CRITICAL)
+
+**Rule #1:** All TraceQA data lives in ONE database with SEPARATE object stores.
+
+Object stores do not block each other when used correctly. This prevents any interference between high-frequency media operations and logging.
+
+```
+IndexedDB: traceqa-db
+├── mediaChunks        ← LARGE blobs, high frequency writes
+├── mediaSessions      ← Session metadata (small)
+├── telemetryEvents    ← Batched user events (medium)
+└── systemLogs         ← Structured logs (small, bounded)
+```
+
+### Database Schema
 
 ```typescript
-// Database: "traceqa-logs"
-// Version: 1
+// Database: "traceqa-db"
+// Version: 2 (upgraded from v1 media-only)
 
-interface LogStore {
-  // Object store: "logs"
-  keyPath: 'id';
-  indexes: [
-    { name: 'by-session', keyPath: 'sessionId' },
-    { name: 'by-timestamp', keyPath: 'timestamp' },
-    { name: 'by-level', keyPath: 'level' },
-    { name: 'by-component', keyPath: 'component' },
-    { name: 'by-subsystem', keyPath: 'subsystem' },
-  ];
+interface TraceQADatabase {
+  // Object store: "mediaChunks" - Video/audio blob storage
+  mediaChunks: {
+    keyPath: 'id';  // `${sessionId}_chunk_${index}`
+    indexes: [
+      { name: 'by-session', keyPath: 'sessionId' },
+    ];
+  };
+
+  // Object store: "mediaSessions" - Session metadata
+  mediaSessions: {
+    keyPath: 'sessionId';
+    indexes: [
+      { name: 'by-timestamp', keyPath: 'startTime' },
+      { name: 'by-status', keyPath: 'status' },
+    ];
+  };
+
+  // Object store: "telemetryEvents" - User interaction events
+  telemetryEvents: {
+    keyPath: 'batchId';
+    indexes: [
+      { name: 'by-session', keyPath: 'sessionId' },
+      { name: 'by-timestamp', keyPath: 'timestamp' },
+    ];
+  };
+
+  // Object store: "systemLogs" - Application logs
+  systemLogs: {
+    keyPath: 'id';
+    indexes: [
+      { name: 'by-session', keyPath: 'sessionId' },
+      { name: 'by-timestamp', keyPath: 'timestamp' },
+      { name: 'by-level', keyPath: 'level' },
+      { name: 'by-component', keyPath: 'component' },
+      { name: 'by-subsystem', keyPath: 'subsystem' },
+    ];
+  };
 }
 ```
+
+### Why Separate Object Stores (Not Databases)
+
+| Approach | Problem |
+|----------|---------|
+| Single store | Large blob writes block small log writes |
+| Multiple databases | Complex cleanup, no transactional integrity |
+| **Separate stores** | **Independent write queues, shared cleanup** |
+
+### Store-Specific Behaviors
+
+| Store | Write Pattern | Size | Cleanup Strategy |
+|-------|---------------|------|------------------|
+| mediaChunks | High frequency during recording | Large (MBs) | Delete after download |
+| mediaSessions | Once per session | Small (KBs) | Retain for history |
+| telemetryEvents | Batched every 2s | Medium (KBs) | Delete with session |
+| systemLogs | Continuous, bounded | Small (bounded) | Rolling retention |
 
 ### Storage Limits
 

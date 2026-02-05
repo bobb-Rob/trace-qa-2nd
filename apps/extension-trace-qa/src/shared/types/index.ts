@@ -180,6 +180,12 @@ export interface UIStateUpdatePayload {
   isPaused: boolean;
   duration: number; // Elapsed recording time in ms (excludes paused time)
   warning?: string | null;
+  // Audio state (Phase 6)
+  isMuted?: boolean;
+  audioEnabled?: boolean;
+  audioLevel?: number; // 0-100 for UI indicator
+  audioAvailable?: boolean;
+  audioUnavailableReason?: AudioUnavailableReason;
 }
 
 // IndexedDB constants
@@ -248,6 +254,7 @@ export type BackgroundToContentMessage =
 
 /**
  * Messages from Content Script → Background (user intents from FloatingPane)
+ * Note: Uses explicit MUTE/UNMUTE instead of toggle for clear intent.
  */
 export type ContentToBackgroundMessage =
   | { type: 'PONG' }  // Response to PING - content script is alive
@@ -255,7 +262,9 @@ export type ContentToBackgroundMessage =
   | { type: 'FLOATING_PANE_PAUSE'; payload: { sessionId: string } }
   | { type: 'FLOATING_PANE_RESUME'; payload: { sessionId: string } }
   | { type: 'FLOATING_PANE_STOP'; payload: { sessionId: string } }
-  | { type: 'FLOATING_PANE_TOGGLE_MUTE'; payload: { sessionId: string } }
+  | { type: 'FLOATING_PANE_MUTE'; payload: { sessionId: string } }  // Explicit mute (NOT toggle)
+  | { type: 'FLOATING_PANE_UNMUTE'; payload: { sessionId: string } }  // Explicit unmute (NOT toggle)
+  | { type: 'FLOATING_PANE_TOGGLE_MUTE'; payload: { sessionId: string } }  // @deprecated - use MUTE/UNMUTE
   | { type: 'FLOATING_PANE_POSITION_CHANGED'; payload: { x: number; y: number } };
 
 // ─────────────────────────────────────────────────────────────
