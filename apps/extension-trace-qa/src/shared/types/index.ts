@@ -257,3 +257,9 @@ export type ContentToBackgroundMessage =
   | { type: 'FLOATING_PANE_STOP'; payload: { sessionId: string } }
   | { type: 'FLOATING_PANE_TOGGLE_MUTE'; payload: { sessionId: string } }
   | { type: 'FLOATING_PANE_POSITION_CHANGED'; payload: { x: number; y: number } };
+
+// ─────────────────────────────────────────────────────────────
+// Re-export from contracts module for gradual migration
+// New code should import from '@/shared/contracts' directly
+// ─────────────────────────────────────────────────────────────
+export * from '../contracts';

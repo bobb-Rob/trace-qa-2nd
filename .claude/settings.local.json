@@ -7,7 +7,9 @@
       "Bash(npm run test:*)",
       "Bash(npm run build:*)",
       "Bash(npm run test:coverage:*)",
-      "Bash(npm ls:*)"
+      "Bash(npm ls:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(npm run typecheck:*)"
     ]
   }
 }

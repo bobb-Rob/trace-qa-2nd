@@ -30,6 +30,11 @@ import {
   hasOffscreenDocument,
 } from './fsm';
 
+import {
+  registerHandler,
+  initializeRouter,
+} from './routing';
+
 console.log('[TraceQA] Background service worker started');
 
 // State broadcast configuration
@@ -374,100 +379,136 @@ async function finalizeSession(error?: string): Promise<void> {
   }
 }
 
-// Message handler
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  console.log('[TraceQA] Received message:', message.type);
+/**
+ * Register all message handlers with the router.
+ * This centralizes handler registration for clarity and maintainability.
+ */
+function registerMessageHandlers(): void {
+  // Recording control messages
+  registerHandler('START_RECORDING', (message, _sender, sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleStartRecording(message.payload, sendResponse);
+    return true;
+  });
 
-  switch (message.type) {
-    case 'START_RECORDING':
-      handleStartRecording(message.payload, sendResponse);
-      return true;
+  registerHandler('STOP_RECORDING', (message, _sender, sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleStopRecording(message.payload, sendResponse);
+    return true;
+  });
 
-    case 'STOP_RECORDING':
-      handleStopRecording(message.payload, sendResponse);
-      return true;
+  registerHandler('GET_RECORDING_STATUS', (message, _sender, sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleGetStatus(sendResponse);
+    return true;
+  });
 
-    case 'GET_RECORDING_STATUS':
-      handleGetStatus(sendResponse);
-      return true;
+  // Messages from offscreen
+  registerHandler('OFFSCREEN_CAPTURE_STARTED', (message, _sender, _sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleCaptureStarted(message.payload);
+    return false;
+  });
 
-    // Messages from offscreen
-    case 'OFFSCREEN_CAPTURE_STARTED':
-      handleCaptureStarted(message.payload);
-      return false;
+  registerHandler('OFFSCREEN_CAPTURE_COMPLETE', (message, _sender, _sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleCaptureComplete(message.payload);
+    return false;
+  });
 
-    case 'OFFSCREEN_CAPTURE_COMPLETE':
-      handleCaptureComplete(message.payload);
-      return false;
+  registerHandler('OFFSCREEN_STREAM_ENDED', (message, _sender, _sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleStreamEnded(message.payload);
+    return false;
+  });
 
-    case 'OFFSCREEN_STREAM_ENDED':
-      handleStreamEnded(message.payload);
-      return false;
+  registerHandler('OFFSCREEN_CAPTURE_ERROR', (message, _sender, _sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleCaptureError(message.payload);
+    return false;
+  });
 
-    case 'OFFSCREEN_CAPTURE_ERROR':
-      handleCaptureError(message.payload);
-      return false;
+  registerHandler('OFFSCREEN_SIZE_WARNING', (message, _sender, _sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    console.warn('[TraceQA] Size warning:', message.payload.currentSize);
+    return false;
+  });
 
-    case 'OFFSCREEN_SIZE_WARNING':
-      console.warn('[TraceQA] Size warning:', message.payload.currentSize);
-      return false;
+  registerHandler('OFFSCREEN_DOWNLOAD_COMPLETE', (message, _sender, _sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleDownloadComplete(message.payload);
+    return false;
+  });
 
-    case 'OFFSCREEN_DOWNLOAD_COMPLETE':
-      handleDownloadComplete(message.payload);
-      return false;
+  // Pause/resume messages from UI (popup, floating pane)
+  registerHandler('UI_PAUSE_REQUESTED', (message, _sender, sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handlePauseRequested(message.payload, sendResponse);
+    return true;
+  });
 
-    // Pause/resume messages from UI (popup, floating pane)
-    case 'UI_PAUSE_REQUESTED':
-      handlePauseRequested(message.payload, sendResponse);
-      return true;
+  registerHandler('UI_RESUME_REQUESTED', (message, _sender, sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleResumeRequested(message.payload, sendResponse);
+    return true;
+  });
 
-    case 'UI_RESUME_REQUESTED':
-      handleResumeRequested(message.payload, sendResponse);
-      return true;
+  // Pause/resume acknowledgments from offscreen
+  registerHandler('OFFSCREEN_PAUSED', (message, _sender, _sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleOffscreenPaused(message.payload);
+    return false;
+  });
 
-    // Pause/resume acknowledgments from offscreen
-    case 'OFFSCREEN_PAUSED':
-      handleOffscreenPaused(message.payload);
-      return false;
+  registerHandler('OFFSCREEN_RESUMED', (message, _sender, _sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleOffscreenResumed(message.payload);
+    return false;
+  });
 
-    case 'OFFSCREEN_RESUMED':
-      handleOffscreenResumed(message.payload);
-      return false;
+  // Messages from content script (FloatingPane actions)
+  registerHandler('FLOATING_PANE_PAUSE', (message, _sender, sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handlePauseRequested(message.payload, sendResponse);
+    return true;
+  });
 
-    // Messages from content script (FloatingPane actions)
-    case 'FLOATING_PANE_PAUSE':
-      handlePauseRequested(message.payload, sendResponse);
-      return true;
+  registerHandler('FLOATING_PANE_RESUME', (message, _sender, sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleResumeRequested(message.payload, sendResponse);
+    return true;
+  });
 
-    case 'FLOATING_PANE_RESUME':
-      handleResumeRequested(message.payload, sendResponse);
-      return true;
+  registerHandler('FLOATING_PANE_STOP', (message, _sender, sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleStopRecording(message.payload, sendResponse);
+    return true;
+  });
 
-    case 'FLOATING_PANE_STOP':
-      handleStopRecording(message.payload, sendResponse);
-      return true;
+  registerHandler('FLOATING_PANE_TOGGLE_MUTE', (message, _sender, sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleToggleMute(message.payload, sendResponse);
+    return true;
+  });
 
-    case 'FLOATING_PANE_TOGGLE_MUTE':
-      handleToggleMute(message.payload, sendResponse);
-      return true;
+  registerHandler('FLOATING_PANE_POSITION_CHANGED', (message, _sender, sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    // Position changes are handled by the content script itself (saves to storage)
+    // No action needed in background
+    sendResponse({ success: true });
+    return false;
+  });
 
-    case 'FLOATING_PANE_POSITION_CHANGED':
-      // Position changes are handled by the content script itself (saves to storage)
-      // No action needed in background
-      sendResponse({ success: true });
-      return false;
+  // Content script injection handshake
+  // Note: Also handled by one-shot listener in ensureContentScriptInjected()
+  registerHandler('CONTENT_SCRIPT_READY', (message, _sender, _sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    // Acknowledge silently - the one-shot listener handles the actual handshake
+    return false;
+  });
 
-    // Content script injection handshake
-    // Note: Also handled by one-shot listener in ensureContentScriptInjected()
-    case 'CONTENT_SCRIPT_READY':
-      // Acknowledge silently - the one-shot listener handles the actual handshake
-      return false;
-
-    default:
-      sendResponse({ success: false, error: 'Unknown message type' });
-      return false;
-  }
-});
+  console.log('[TraceQA] All message handlers registered');
+}
 
 // Keyboard shortcut handler
 chrome.commands.onCommand.addListener((command) => {
@@ -943,6 +984,10 @@ async function handleGetStatus(sendResponse: (response: unknown) => void): Promi
 
     // Step 4: Validate state (self-healing)
     await validateStateOnWake();
+
+    // Step 5: Initialize message router and register handlers
+    initializeRouter();
+    registerMessageHandlers();
 
     console.log('[TraceQA] FSM initialized, state:', getState());
   } catch (error) {
