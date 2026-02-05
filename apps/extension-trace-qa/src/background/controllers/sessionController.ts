@@ -101,6 +101,7 @@ export async function startRecordingSession(payload: {
       width: qualityConfig.width,
       height: qualityConfig.height,
       frameRate: qualityConfig.frameRate,
+      audioEnabled: true, // Phase 7: Enable audio capture by default
     });
 
     // Response is immediate - actual RECORDING state comes via OFFSCREEN_CAPTURE_STARTED

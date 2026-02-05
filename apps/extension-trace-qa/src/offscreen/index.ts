@@ -65,6 +65,7 @@ registerHandler('OFFSCREEN_START_CAPTURE', (message, _sender, sendResponse) => {
         width: config.width,
         height: config.height,
         frameRate: config.frameRate,
+        audioEnabled: config.audioEnabled ?? false, // Phase 7: Audio support
       });
 
       // Notify background of successful start
@@ -215,6 +216,73 @@ registerHandler('OFFSCREEN_DOWNLOAD_BLOB', (message, _sender, sendResponse) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// Audio Handlers (Phase 7)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Handle OFFSCREEN_ENABLE_AUDIO
+ * Note: Audio is typically enabled during startCapture via config.audioEnabled
+ * This handler exists for explicit runtime enable (if needed).
+ */
+registerHandler('OFFSCREEN_ENABLE_AUDIO', (_message, _sender, sendResponse) => {
+  try {
+    console.log('[Offscreen] Explicit audio enable requested (no-op - audio enabled during capture start)');
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('[Offscreen] Enable audio error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+  return false;
+});
+
+/**
+ * Handle OFFSCREEN_DISABLE_AUDIO
+ * Note: Audio is typically disabled during stopCapture cleanup.
+ * This handler exists for explicit runtime disable (if needed).
+ */
+registerHandler('OFFSCREEN_DISABLE_AUDIO', (_message, _sender, sendResponse) => {
+  try {
+    console.log('[Offscreen] Explicit audio disable requested (no-op - audio cleaned up on capture stop)');
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('[Offscreen] Disable audio error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+  return false;
+});
+
+/**
+ * Handle OFFSCREEN_SET_MUTED
+ */
+registerHandler('OFFSCREEN_SET_MUTED', (message, _sender, sendResponse) => {
+  try {
+    const { muted } = message.payload;
+
+    if (muted) {
+      captureController.muteAudio();
+    } else {
+      captureController.unmuteAudio();
+    }
+
+    console.log('[Offscreen] Audio mute state changed:', { muted });
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('[Offscreen] Set muted error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+  return false;
+});
+
+// ─────────────────────────────────────────────────────────────
 // Capture Event Handlers
 // ─────────────────────────────────────────────────────────────
 
@@ -277,6 +345,25 @@ captureController.onStreamEnded(() => {
     payload: {
       sessionId,
       reason: 'User stopped sharing',
+    },
+  });
+});
+
+/**
+ * Register audio unavailable callback
+ */
+captureController.onAudioUnavailable((reason, message) => {
+  console.warn('[Offscreen] Audio unavailable:', { reason, message });
+
+  const sessionId = captureController.getCurrentSessionId();
+  
+  // Notify background that audio is unavailable but video continues
+  chrome.runtime.sendMessage({
+    type: 'OFFSCREEN_AUDIO_UNAVAILABLE',
+    payload: {
+      sessionId,
+      reason,
+      message,
     },
   });
 });

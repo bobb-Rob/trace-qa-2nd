@@ -166,6 +166,10 @@ export interface OffscreenStartCaptureCommand {
     config: {
       mimeType: string;
       videoBitsPerSecond: number;
+      width: number;
+      height: number;
+      frameRate: number;
+      audioEnabled?: boolean; // Phase 7: Audio support
     };
   };
 }

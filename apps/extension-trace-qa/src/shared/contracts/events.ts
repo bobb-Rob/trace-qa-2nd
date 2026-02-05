@@ -117,6 +117,19 @@ export interface OffscreenAudioLevelEvent {
 }
 
 /**
+ * Audio unavailable notification.
+ * Sent when audio capture fails but video continues.
+ */
+export interface OffscreenAudioUnavailableEvent {
+  type: 'OFFSCREEN_AUDIO_UNAVAILABLE';
+  payload: {
+    sessionId: string;
+    reason: 'permission_denied' | 'no_device' | 'initialization_failed' | 'unknown';
+    message: string;
+  };
+}
+
+/**
  * Size warning threshold reached.
  * Sent when recording size approaches limit.
  */
@@ -236,6 +249,7 @@ export const EVENT_TYPES = {
   OFFSCREEN_CAPTURE_ERROR: 'OFFSCREEN_CAPTURE_ERROR',
   OFFSCREEN_CHUNK_STORED: 'OFFSCREEN_CHUNK_STORED',
   OFFSCREEN_AUDIO_LEVEL: 'OFFSCREEN_AUDIO_LEVEL',
+  OFFSCREEN_AUDIO_UNAVAILABLE: 'OFFSCREEN_AUDIO_UNAVAILABLE',
   OFFSCREEN_SIZE_WARNING: 'OFFSCREEN_SIZE_WARNING',
 
   // Content → Background

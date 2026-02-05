@@ -52,13 +52,21 @@ export function startCapture(sessionId: string, config: {
   width: number;
   height: number;
   frameRate: number;
+  audioEnabled?: boolean;
 }): void {
-  console.log('[OffscreenController] Starting capture:', sessionId);
+  console.log('[OffscreenController] Starting capture:', { sessionId, audioEnabled: config.audioEnabled });
   chrome.runtime.sendMessage({
     type: 'OFFSCREEN_START_CAPTURE',
     payload: {
       sessionId,
-      config,
+      config: {
+        mimeType: config.mimeType,
+        videoBitsPerSecond: config.videoBitsPerSecond,
+        width: config.width,
+        height: config.height,
+        frameRate: config.frameRate,
+        audioEnabled: config.audioEnabled ?? false, // Default to false if not specified
+      },
     },
   });
 }

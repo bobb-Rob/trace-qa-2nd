@@ -253,6 +253,28 @@ function registerMessageHandlers(): void {
     return false;
   });
 
+  registerHandler('OFFSCREEN_AUDIO_UNAVAILABLE', (message, _sender, _sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    const { reason, message: errorMsg } = message.payload;
+    
+    console.warn('[TraceQA] Audio unavailable, continuing video-only:', { reason, errorMsg });
+    
+    // Show notification to user
+    const notificationMessage = reason === 'permission_denied' 
+      ? 'Microphone access denied. Recording video only.'
+      : 'Audio unavailable. Recording video only.';
+    
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon-48.png'),
+      title: 'TraceQA Recording',
+      message: notificationMessage,
+      priority: 1,
+    });
+    
+    return false;
+  });
+
   registerHandler('OFFSCREEN_DOWNLOAD_COMPLETE', (message, _sender, _sendResponse) => {
     console.log('[TraceQA] Received message:', message.type);
     handleDownloadComplete(message.payload).then(() => {

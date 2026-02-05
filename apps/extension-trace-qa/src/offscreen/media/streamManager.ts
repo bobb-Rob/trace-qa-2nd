@@ -3,6 +3,7 @@
  *
  * Manages MediaStream lifecycle for screen capture.
  * Handles getDisplayMedia, track cleanup, and stream lifecycle events.
+ * Supports audio track injection for mixed recording.
  *
  * @module offscreen/media/streamManager
  */
@@ -49,6 +50,58 @@ export async function acquireStream(video: {
     console.error('[StreamManager] Failed to acquire stream:', error);
     throw error;
   }
+}
+
+/**
+ * Add audio track to the current video stream.
+ * This allows MediaRecorder to capture both video and audio in one stream.
+ * 
+ * @param audioTrack - Mixed audio track from audioMixer
+ */
+export function addAudioTrack(audioTrack: MediaStreamTrack): void {
+  if (!currentStream) {
+    console.warn('[StreamManager] Cannot add audio track: no active stream');
+    return;
+  }
+
+  // Remove existing audio tracks first
+  currentStream.getAudioTracks().forEach((track) => {
+    currentStream!.removeTrack(track);
+    track.stop();
+  });
+
+  // Add new audio track
+  currentStream.addTrack(audioTrack);
+
+  console.log('[StreamManager] Audio track added:', {
+    trackId: audioTrack.id,
+    trackLabel: audioTrack.label,
+    totalTracks: currentStream.getTracks().length,
+  });
+}
+
+/**
+ * Remove audio track from the stream.
+ */
+export function removeAudioTrack(): void {
+  if (!currentStream) {
+    return;
+  }
+
+  currentStream.getAudioTracks().forEach((track) => {
+    currentStream!.removeTrack(track);
+    track.stop();
+  });
+
+  console.log('[StreamManager] Audio track removed');
+}
+
+/**
+ * Check if stream has audio track.
+ */
+export function hasAudioTrack(): boolean {
+  const trackCount = currentStream?.getAudioTracks().length ?? 0;
+  return trackCount > 0;
 }
 
 /**

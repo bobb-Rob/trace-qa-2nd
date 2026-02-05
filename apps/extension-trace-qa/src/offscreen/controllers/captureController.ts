@@ -3,6 +3,7 @@
  *
  * Orchestrates the media capture pipeline.
  * Coordinates stream acquisition, recording, chunk accumulation, and storage.
+ * Manages audio capture, mixing, and level monitoring.
  *
  * @module offscreen/controllers/captureController
  */
@@ -11,6 +12,9 @@ import * as streamManager from '../media/streamManager';
 import * as recorderManager from '../media/recorderManager';
 import * as chunkManager from '../data/chunkManager';
 import * as storageManager from '../data/storageManager';
+import * as audioManager from '../media/audio/audioManager';
+import * as audioMixer from '../media/audio/audioMixer';
+import * as audioLevels from '../media/audio/audioLevels';
 
 export interface CaptureConfig {
   mimeType: string;
@@ -18,17 +22,22 @@ export interface CaptureConfig {
   width: number;
   height: number;
   frameRate: number;
+  audioEnabled?: boolean; // Optional audio capture
 }
 
 export type CaptureCompleteCallback = (sessionId: string, blob: Blob) => void;
 export type CaptureErrorCallback = (error: string) => void;
 export type StreamEndedCallback = () => void;
+export type AudioUnavailableCallback = (reason: string, message: string) => void;
 
 let currentSessionId: string | null = null;
 let currentMimeType: string | null = null;
 let captureCompleteCallback: CaptureCompleteCallback | null = null;
 let captureErrorCallback: CaptureErrorCallback | null = null;
 let streamEndedCallback: StreamEndedCallback | null = null;
+let audioUnavailableCallback: AudioUnavailableCallback | null = null;
+let audioEnabled = false;
+let audioInitialized = false;
 
 /**
  * Start a new capture session.
@@ -64,6 +73,88 @@ export async function startCapture(
         streamEndedCallback();
       }
     });
+
+    // 1.5. Initialize audio pipeline if enabled
+    audioEnabled = config.audioEnabled ?? false;
+    if (audioEnabled) {
+      console.log('[CaptureController] Initializing audio pipeline');
+      
+      try {
+        // Initialize audio manager
+        audioManager.initialize();
+        
+        // Request microphone access
+        const micStream = await audioManager.enable();
+        
+        if (!micStream) {
+          console.warn('[CaptureController] Microphone access denied, continuing video-only');
+          if (audioUnavailableCallback) {
+            audioUnavailableCallback('permission_denied', 'Microphone permission denied');
+          }
+          audioEnabled = false;
+        } else {
+          try {
+            // Initialize mixer
+            audioMixer.initialize();
+            audioMixer.connectMic(micStream);
+
+            // Get mixed audio track
+            const audioTrack = audioMixer.getMixedTrack();
+            if (audioTrack) {
+              // Add audio track to video stream
+              streamManager.addAudioTrack(audioTrack);
+
+              // Attach level monitoring
+              try {
+                const context = new AudioContext();
+                const source = context.createMediaStreamSource(micStream);
+                audioLevels.attach(context, source);
+              } catch (levelError) {
+                console.warn('[CaptureController] Audio level monitoring failed (non-critical):', levelError);
+              }
+
+              audioInitialized = true;
+              console.log('[CaptureController] Audio pipeline initialized successfully');
+            } else {
+              console.warn('[CaptureController] No mixed audio track available, continuing video-only');
+              if (audioUnavailableCallback) {
+                audioUnavailableCallback('initialization_failed', 'No mixed audio track available');
+              }
+              audioEnabled = false;
+            }
+          } catch (mixerError) {
+            console.error('[CaptureController] Audio mixer initialization failed, continuing video-only:', mixerError);
+            if (audioUnavailableCallback) {
+              audioUnavailableCallback('initialization_failed', 'Audio mixer initialization failed');
+            }
+            audioEnabled = false;
+            audioInitialized = false;
+            
+            // Cleanup partial audio state
+            try {
+              audioManager.disable();
+            } catch (cleanupError) {
+              // Ignore cleanup errors
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[CaptureController] Audio initialization failed, continuing video-only:', error);
+        if (audioUnavailableCallback) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          audioUnavailableCallback('unknown', errorMsg);
+        }
+        audioEnabled = false;
+        audioInitialized = false;
+        
+        // Ensure audio state is clean
+        try {
+          audioManager.disable();
+        } catch (cleanupError) {
+          // Ignore cleanup errors
+        }
+      }
+    }
 
     // 2. Create MediaRecorder
     recorderManager.createRecorder(stream, {
@@ -221,6 +312,69 @@ export function onStreamEnded(callback: StreamEndedCallback): void {
 }
 
 /**
+ * Register callback for audio unavailability.
+ */
+export function onAudioUnavailable(callback: AudioUnavailableCallback): void {
+  audioUnavailableCallback = callback;
+}
+
+/**
+ * Mute audio (if audio is enabled).
+ * Uses GainNode for instant, glitch-free muting.
+ */
+export function muteAudio(): void {
+  if (!audioEnabled || !audioInitialized) {
+    console.warn('[CaptureController] Cannot mute: audio not enabled');
+    return;
+  }
+
+  audioMixer.setMuted(true);
+  console.log('[CaptureController] Audio muted');
+}
+
+/**
+ * Unmute audio (if audio is enabled).
+ */
+export function unmuteAudio(): void {
+  if (!audioEnabled || !audioInitialized) {
+    console.warn('[CaptureController] Cannot unmute: audio not enabled');
+    return;
+  }
+
+  audioMixer.setMuted(false);
+  console.log('[CaptureController] Audio unmuted');
+}
+
+/**
+ * Get current audio level (0-1 normalized).
+ * Returns 0 if audio not enabled or muted.
+ */
+export function getAudioLevel(): number {
+  if (!audioEnabled || !audioInitialized) {
+    return 0;
+  }
+
+  return audioLevels.getLevel();
+}
+
+/**
+ * Get audio state (for diagnostics).
+ */
+export function getAudioState(): {
+  enabled: boolean;
+  initialized: boolean;
+  muted: boolean;
+  hasAudioTrack: boolean;
+} {
+  return {
+    enabled: audioEnabled,
+    initialized: audioInitialized,
+    muted: audioMixer.getMuted(),
+    hasAudioTrack: streamManager.hasAudioTrack(),
+  };
+}
+
+/**
  * Cleanup resources after capture session.
  */
 function cleanup(): void {
@@ -234,9 +388,20 @@ function cleanup(): void {
   // Clear chunks
   chunkManager.clearChunks();
 
+  // Cleanup audio pipeline
+  if (audioInitialized) {
+    audioLevels.detach();
+    audioMixer.disconnectMic();
+    audioMixer.destroy();
+    audioManager.disable();
+    audioManager.clearErrorCallback();
+    audioInitialized = false;
+  }
+
   // Reset state
   currentSessionId = null;
   currentMimeType = null;
+  audioEnabled = false;
 }
 
 /**
