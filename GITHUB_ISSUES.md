@@ -206,7 +206,7 @@ The upload pipeline should handle chunked uploads for large files, provide progr
 - Use multipart upload for files >10MB
 - Store upload state in chrome.storage.local for recovery
 - Consider using tus protocol for resumable uploads
-- Chunk size should balance network efficiency and memory usage (recommended: 5MB)
+- Chunk size should balance network efficiency and memory usage (recommended: 5MB chunks for files >10MB)
 
 ---
 
@@ -260,8 +260,8 @@ Add video trimming capability in the post-recording preview overlay. Users shoul
 - [x] Browser compatibility test
 
 ### Dependencies
-- Requires preview overlay component
-- Should be completed before Issue #8 (Preview Overlay)
+- Requires preview overlay component for post-recording trim
+- Should be integrated into preview overlay after Issue #8 (basic preview) is complete
 
 ---
 
