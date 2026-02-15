@@ -94,7 +94,7 @@ export const FloatingPaneView: React.FC<FloatingPaneViewProps> = ({
       const rect = hostElement.getBoundingClientRect();
       const defaultPos = {
         x: (window.innerWidth - rect.width) / 2,
-        y: window.innerHeight - rect.height - 10,
+        y: 10,
       };
       currentPositionRef.current = defaultPos;
       applyPosition(defaultPos);

@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { ExternalLink } from 'lucide-react';
 import { StatusIndicator } from './components/StatusIndicator';
 import { RecordingButton } from './components/RecordingButton';
 import { RecordingInfo } from './components/RecordingInfo';
@@ -41,10 +40,6 @@ export function Popup(): React.ReactElement {
     }
   };
 
-  const handleViewBugs = (): void => {
-    chrome.tabs.create({ url: 'https://app.traceqa.com/bugs' });
-  };
-
   const handleDismissError = (): void => {
     setLocalError(null);
   };
@@ -52,7 +47,7 @@ export function Popup(): React.ReactElement {
   const displayError = localError ?? state.error;
 
   return (
-    <div data-testid="popup-container" className="w-80 min-h-[400px] p-4 bg-gradient-to-br from-gray-50 to-gray-100">
+    <div data-testid="popup-container" className="w-80 min-h-[320px] p-4 bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Header */}
       <header data-testid="popup-header" className="text-center mb-5">
         <h1 data-testid="app-title" className="text-xl font-bold text-gray-900">TraceQA</h1>
@@ -88,15 +83,6 @@ export function Popup(): React.ReactElement {
           isPaused={state.isPaused}
         />
 
-        <button
-          type="button"
-          onClick={handleViewBugs}
-          data-testid="view-bugs-btn"
-          className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-white border border-gray-200 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
-        >
-          <span>View Captured Bugs</span>
-          <ExternalLink size={16} />
-        </button>
       </main>
 
       {/* Footer */}

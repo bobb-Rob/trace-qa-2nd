@@ -329,24 +329,31 @@ captureController.onCaptureError((error) => {
 /**
  * Register stream ended callback (user clicked browser's "Stop sharing")
  */
-captureController.onStreamEnded(() => {
-  console.log('[Offscreen] Stream ended externally');
+captureController.onStreamEnded(async () => {
+  console.log('[Offscreen] Stream ended externally (user clicked Stop sharing)');
 
   const sessionId = captureController.getCurrentSessionId();
 
-  // Attempt to finalize capture
-  captureController.stopCapture().catch((error) => {
+  try {
+    // Finalize capture: stop recorder, assemble blob, store in IndexedDB.
+    // This MUST complete before any download is attempted.
+    // onCaptureComplete callback fires inside stopCapture() and sends
+    // OFFSCREEN_CAPTURE_COMPLETE with the correct blobKey, size, and duration.
+    await captureController.stopCapture();
+    console.log('[Offscreen] Capture finalized after external stream end');
+  } catch (error) {
     console.error('[Offscreen] Failed to finalize after stream end:', error);
-  });
 
-  // Notify background via STREAM_ENDED message
-  chrome.runtime.sendMessage({
-    type: 'OFFSCREEN_STREAM_ENDED',
-    payload: {
-      sessionId,
-      reason: 'User stopped sharing',
-    },
-  });
+    // Notify background of the failure so FSM can recover to IDLE
+    chrome.runtime.sendMessage({
+      type: 'OFFSCREEN_CAPTURE_ERROR',
+      payload: {
+        sessionId,
+        errorCode: 'ENCODER_ERROR',
+        message: error instanceof Error ? error.message : 'Failed to finalize recording after stream end',
+      },
+    });
+  }
 });
 
 /**

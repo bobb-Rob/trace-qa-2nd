@@ -67,6 +67,22 @@ export async function startCapture(
       height: { ideal: config.height },
     });
 
+    // Log actual vs requested stream quality for verification
+    const videoTrack = stream.getVideoTracks()[0];
+    if (videoTrack) {
+      const actual = videoTrack.getSettings();
+      console.log('[CaptureController] Quality verification:', {
+        requested: { width: config.width, height: config.height, frameRate: config.frameRate, bitrate: config.videoBitsPerSecond },
+        actual: { width: actual.width, height: actual.height, frameRate: actual.frameRate },
+      });
+      if (actual.width && actual.width < config.width * 0.8) {
+        console.warn('[CaptureController] Width significantly below requested:', actual.width, 'vs', config.width);
+      }
+      if (actual.height && actual.height < config.height * 0.8) {
+        console.warn('[CaptureController] Height significantly below requested:', actual.height, 'vs', config.height);
+      }
+    }
+
     // Register stream end handler
     streamManager.onStreamEnded(() => {
       console.log('[CaptureController] Stream ended externally');

@@ -3,6 +3,7 @@
  *
  * Manages the FloatingPane UI overlay in content scripts.
  * Handles injection confirmation, state updates, and lifecycle.
+ * Supports single-tab (TAB mode), multi-tab (WINDOW mode), and all-tabs (DESKTOP mode).
  *
  * @module background/ui/floatingPaneController
  */
@@ -10,6 +11,7 @@
 import type {
   ContentShowFloatingPanePayload,
   UpdateFloatingPanePayload,
+  CaptureMode,
 } from '../../shared/types';
 
 // Timeout for waiting for CONTENT_SCRIPT_READY after injection
@@ -17,6 +19,20 @@ const INJECTION_READY_TIMEOUT_MS = 5000;
 
 // Track tabs with confirmed content script presence (reset on extension reload)
 const confirmedTabs = new Set<number>();
+
+// Multi-tab FloatingPane state
+const activePaneTabs = new Set<number>();
+let currentCaptureMode: CaptureMode | null = null;
+let currentWindowId: number | null = null;
+let lastShowPayload: ContentShowFloatingPanePayload | null = null;
+
+/**
+ * Check if a tab URL is injectable (content scripts can only run on http/https/file).
+ */
+function isInjectableTab(tab: chrome.tabs.Tab): boolean {
+  if (!tab.url) return false;
+  return tab.url.startsWith('http://') || tab.url.startsWith('https://') || tab.url.startsWith('file://');
+}
 
 /**
  * Ensure content script is injected and ready in the target tab.
@@ -99,7 +115,7 @@ export async function ensureContentScriptInjected(tabId: number): Promise<boolea
 }
 
 /**
- * Show the FloatingPane in the content script for TAB recording mode.
+ * Show the FloatingPane in a single tab.
  * Ensures content script is injected before sending message.
  */
 export async function showFloatingPane(tabId: number, payload: ContentShowFloatingPanePayload): Promise<void> {
@@ -122,7 +138,7 @@ export async function showFloatingPane(tabId: number, payload: ContentShowFloati
 }
 
 /**
- * Update the FloatingPane state in the content script.
+ * Update the FloatingPane state in a single tab.
  */
 export async function updateFloatingPane(tabId: number, payload: UpdateFloatingPanePayload): Promise<void> {
   try {
@@ -136,7 +152,7 @@ export async function updateFloatingPane(tabId: number, payload: UpdateFloatingP
 }
 
 /**
- * Hide the FloatingPane in the content script.
+ * Hide the FloatingPane in a single tab.
  */
 export async function hideFloatingPane(tabId: number): Promise<void> {
   try {
@@ -156,21 +172,142 @@ export function clearTabConfirmation(tabId: number): void {
   confirmedTabs.delete(tabId);
 }
 
+// ─────────────────────────────────────────────────────────────
+// Multi-Tab FloatingPane Management
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Inject FloatingPane into a single tab and track it.
+ */
+async function injectIntoTab(tabId: number, payload: ContentShowFloatingPanePayload): Promise<void> {
+  const ready = await ensureContentScriptInjected(tabId);
+  if (ready) {
+    await showFloatingPane(tabId, payload);
+    activePaneTabs.add(tabId);
+  }
+}
+
+/**
+ * Check if a tab is in scope for the current recording mode.
+ */
+function isTabInScope(tab: chrome.tabs.Tab): boolean {
+  if (!currentCaptureMode) return false;
+  if (!isInjectableTab(tab)) return false;
+
+  if (currentCaptureMode === 'TAB') {
+    // TAB mode: only the single recording tab (handled separately)
+    return false;
+  } else if (currentCaptureMode === 'WINDOW') {
+    return tab.windowId === currentWindowId;
+  } else {
+    // DESKTOP: all tabs
+    return true;
+  }
+}
+
+/**
+ * Show FloatingPane for the given capture mode.
+ * - TAB: single tab
+ * - WINDOW: all tabs in the specified window
+ * - DESKTOP: all tabs across all windows
+ */
+export async function showFloatingPaneForMode(
+  mode: CaptureMode | null,
+  payload: ContentShowFloatingPanePayload,
+  tabId?: number | null,
+  windowId?: number | null
+): Promise<void> {
+  currentCaptureMode = mode;
+  currentWindowId = windowId ?? null;
+  lastShowPayload = payload;
+  activePaneTabs.clear();
+
+  if (!mode) return;
+
+  if (mode === 'TAB' && tabId) {
+    await injectIntoTab(tabId, payload);
+  } else if (mode === 'WINDOW' && windowId) {
+    const tabs = await chrome.tabs.query({ windowId });
+    const injectPromises = tabs
+      .filter((tab) => tab.id && isInjectableTab(tab))
+      .map((tab) => injectIntoTab(tab.id!, payload));
+    await Promise.allSettled(injectPromises);
+    console.log('[FloatingPaneController] FloatingPane shown in window:', windowId, 'tabs:', activePaneTabs.size);
+  } else if (mode === 'DESKTOP') {
+    const tabs = await chrome.tabs.query({});
+    const injectPromises = tabs
+      .filter((tab) => tab.id && isInjectableTab(tab))
+      .map((tab) => injectIntoTab(tab.id!, payload));
+    await Promise.allSettled(injectPromises);
+    console.log('[FloatingPaneController] FloatingPane shown in all tabs:', activePaneTabs.size);
+  }
+}
+
+/**
+ * Update FloatingPane state in all active tabs.
+ */
+export async function updateAllFloatingPanes(payload: UpdateFloatingPanePayload): Promise<void> {
+  const updatePromises = [...activePaneTabs].map(async (tabId) => {
+    try {
+      await updateFloatingPane(tabId, payload);
+    } catch {
+      // Tab may be gone — remove from tracking
+      activePaneTabs.delete(tabId);
+    }
+  });
+  await Promise.allSettled(updatePromises);
+}
+
+/**
+ * Hide FloatingPane in all active tabs and reset state.
+ */
+export async function hideAllFloatingPanes(): Promise<void> {
+  const hidePromises = [...activePaneTabs].map((tabId) =>
+    hideFloatingPane(tabId).catch(() => {})
+  );
+  await Promise.allSettled(hidePromises);
+
+  activePaneTabs.clear();
+  currentCaptureMode = null;
+  currentWindowId = null;
+  lastShowPayload = null;
+}
+
 /**
  * Initialize tab tracking listeners.
  * Should be called once during background script initialization.
  */
 export function initializeTabTracking(): void {
-  // Remove tab from confirmed set when tab is closed
+  // Remove tab from confirmed and active sets when closed
   chrome.tabs.onRemoved.addListener((tabId) => {
     confirmedTabs.delete(tabId);
+    activePaneTabs.delete(tabId);
   });
 
-  // Clear confirmation on navigation (content script may be unloaded)
-  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  // Handle tab navigation and completion
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.status === 'loading') {
+      // Content script is unloaded on navigation
       confirmedTabs.delete(tabId);
+      activePaneTabs.delete(tabId);
     }
+
+    // Re-inject FloatingPane when navigated tab finishes loading (if recording is active)
+    if (changeInfo.status === 'complete' && currentCaptureMode && lastShowPayload) {
+      if (isTabInScope(tab)) {
+        injectIntoTab(tabId, lastShowPayload).catch((error) => {
+          console.warn('[FloatingPaneController] Failed to re-inject after navigation:', error);
+        });
+      }
+    }
+  });
+
+  // Inject FloatingPane into newly created tabs (if in scope)
+  // Note: onCreated fires before the tab has a URL, so actual injection
+  // happens in onUpdated when status='complete'
+  chrome.tabs.onCreated.addListener((tab) => {
+    if (!currentCaptureMode || !lastShowPayload || !tab.id) return;
+    // The tab will be caught by onUpdated(status='complete') once it loads
   });
 
   console.log('[FloatingPaneController] Tab tracking initialized');

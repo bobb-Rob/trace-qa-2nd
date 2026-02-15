@@ -24,6 +24,8 @@ import {
 
 import {
   getRecordingTabId,
+  getRecordingWindowId,
+  getRecordingCaptureMode,
   resetRecordingTabId,
   startRecordingSession,
   stopRecordingSession,
@@ -38,6 +40,8 @@ import {
   handleDownloadComplete,
   getRecordingStatus,
   handleMicPermissionResult,
+  getAudioState,
+  setMuted,
 } from './controllers';
 
 import { closeOffscreenDocument } from './controllers/offscreenController';
@@ -51,9 +55,9 @@ import {
 } from './ui/stateBroadcastManager';
 
 import {
-  showFloatingPane,
-  updateFloatingPane,
-  hideFloatingPane,
+  showFloatingPaneForMode,
+  updateAllFloatingPanes,
+  hideAllFloatingPanes,
   initializeTabTracking,
 } from './ui/floatingPaneController';
 
@@ -85,14 +89,12 @@ function handleStateBroadcast(state: BroadcastState): void {
     // Ignore errors if no listeners (popup might be closed)
   });
 
-  // Update FloatingPane in content script (TAB mode only)
-  const recordingTabId = getRecordingTabId();
-  if (recordingTabId !== null) {
-    updateFloatingPane(recordingTabId, {
-      isPaused: state.isPaused,
-      duration: state.duration,
-    });
-  }
+  // Update FloatingPane in all active tabs
+  updateAllFloatingPanes({
+    isPaused: state.isPaused,
+    duration: state.duration,
+    isMuted: state.isMuted,
+  });
 }
 
 // Register broadcast callback with stateBroadcastManager
@@ -134,12 +136,9 @@ async function finalizeSession(error?: string): Promise<void> {
   // Stop state broadcast immediately
   stopStateBroadcast();
 
-  // Hide FloatingPane if showing (TAB mode)
-  const recordingTabId = getRecordingTabId();
-  if (recordingTabId !== null) {
-    await hideFloatingPane(recordingTabId);
-    resetRecordingTabId();
-  }
+  // Hide FloatingPane in all active tabs
+  await hideAllFloatingPanes();
+  resetRecordingTabId();
 
   try {
     // Always close offscreen document first (best effort)
@@ -212,17 +211,21 @@ function registerMessageHandlers(): void {
       // Start broadcasting state updates to UI
       startStateBroadcast();
 
-      // Show FloatingPane for TAB recording mode
-      const recordingTabId = getRecordingTabId();
-      if (recordingTabId !== null) {
-        showFloatingPane(recordingTabId, {
-          sessionId: message.payload.sessionId,
-          isPaused: false,
-          isMuted: false, // TODO: Track actual mute state
-          duration: 0,
-          canPause: true, // Pause is now implemented
-        });
-      }
+      // Show FloatingPane based on capture mode
+      const captureMode = getRecordingCaptureMode();
+      const panePayload = {
+        sessionId: message.payload.sessionId,
+        isPaused: false,
+        isMuted: getAudioState().muted,
+        duration: 0,
+        canPause: true,
+      };
+      showFloatingPaneForMode(
+        captureMode,
+        panePayload,
+        getRecordingTabId(),
+        getRecordingWindowId()
+      );
     });
     return false;
   });
@@ -412,7 +415,7 @@ chrome.commands.onCommand.addListener((command) => {
 
 /**
  * Handle mute toggle request from FloatingPane.
- * TODO: Implement actual mute functionality via offscreen document.
+ * Toggles audioController state and forwards to offscreen document.
  */
 async function handleToggleMute(
   payload: { sessionId: string },
@@ -433,10 +436,29 @@ async function handleToggleMute(
     return;
   }
 
-  // TODO: Send message to offscreen to toggle audio track
-  // For now, just acknowledge the request
-  console.warn('[TraceQA] Mute toggle not yet implemented');
-  sendResponse({ success: true, message: 'Mute toggle acknowledged (not implemented)' });
+  const audioState = getAudioState();
+
+  // Guard: audio must be enabled and available for this session
+  if (!audioState.enabled) {
+    sendResponse({ success: false, error: 'Audio not enabled for this session' });
+    return;
+  }
+
+  const newMuted = !audioState.muted;
+
+  // Update audioController state (persists preference)
+  await setMuted(newMuted);
+
+  // Forward to offscreen document to apply GainNode change
+  chrome.runtime.sendMessage({
+    type: 'OFFSCREEN_SET_MUTED',
+    payload: { muted: newMuted },
+  }).catch(() => {
+    // Offscreen might not exist if recording just ended
+  });
+
+  console.log('[TraceQA] Mute toggled:', { muted: newMuted });
+  sendResponse({ success: true, muted: newMuted });
 }
 
 // Initialize FSM on service worker wake

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Video, Mic, MicOff, Monitor } from 'lucide-react';
+import { Video, Mic, MicOff } from 'lucide-react';
 import type { VideoRecordingConfig, VideoQuality, AudioSource } from '@shared/types';
 
 interface VideoSettingsProps {
@@ -56,11 +56,6 @@ export function VideoSettings({
             disabled={disabled}
           />
         </div>
-      </div>
-
-      <div className="flex items-center gap-2 text-xs text-gray-500">
-        <Monitor size={14} />
-        <span>Captures current tab</span>
       </div>
 
       <div className="flex items-center justify-between">

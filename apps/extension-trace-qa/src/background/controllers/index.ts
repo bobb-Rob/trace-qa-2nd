@@ -21,6 +21,8 @@ export {
 // Session Controller
 export {
   getRecordingTabId,
+  getRecordingWindowId,
+  getRecordingCaptureMode,
   resetRecordingTabId,
   startRecordingSession,
   stopRecordingSession,

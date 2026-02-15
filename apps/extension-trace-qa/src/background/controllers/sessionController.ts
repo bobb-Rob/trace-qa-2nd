@@ -35,19 +35,38 @@ import {
 import {
   RECORDER_CONFIG,
   type VideoRecordingConfig,
+  type CaptureMode,
   type OffscreenCaptureCompletePayload,
   type OffscreenStreamEndedPayload,
   type OffscreenErrorPayload,
 } from '../../shared/types';
 
+import { prepareAudioForSession } from './audioController';
+
 // Session state
 let recordingTabId: number | null = null;
+let recordingWindowId: number | null = null;
+let recordingCaptureMode: CaptureMode | null = null;
 
 /**
  * Get the current recording tab ID (for TAB mode).
  */
 export function getRecordingTabId(): number | null {
   return recordingTabId;
+}
+
+/**
+ * Get the current recording window ID (for WINDOW mode).
+ */
+export function getRecordingWindowId(): number | null {
+  return recordingWindowId;
+}
+
+/**
+ * Get the current recording capture mode.
+ */
+export function getRecordingCaptureMode(): CaptureMode | null {
+  return recordingCaptureMode;
 }
 
 /**
@@ -71,11 +90,20 @@ export async function startRecordingSession(payload: {
       return { success: false, error: 'Already recording or busy' };
     }
 
-    // Store tab ID for TAB recording mode (used for FloatingPane)
+    // Store capture mode and relevant IDs for FloatingPane injection
+    recordingCaptureMode = payload.videoConfig.captureMode;
     if (payload.videoConfig.captureMode === 'TAB') {
       recordingTabId = payload.tabId;
+      recordingWindowId = null;
+    } else if (payload.videoConfig.captureMode === 'WINDOW') {
+      recordingTabId = null;
+      // Look up the window ID from the active tab
+      const tab = await chrome.tabs.get(payload.tabId);
+      recordingWindowId = tab.windowId;
     } else {
-      recordingTabId = null; // DESKTOP/WINDOW modes don't use content script
+      // DESKTOP mode: null means "all windows"
+      recordingTabId = null;
+      recordingWindowId = null;
     }
 
     // Update context with session info
@@ -104,6 +132,9 @@ export async function startRecordingSession(payload: {
       audioEnabled = await ensureMicPermission();
       console.log('[MIC-PERM][BACKGROUND] audioEnabled after permission check:', audioEnabled);
     }
+
+    // Prepare audio controller state so mute toggle works during recording
+    await prepareAudioForSession({ enabled: audioEnabled, deviceId: null });
 
     // 4. Send message to offscreen to start capture
     startCapture(payload.sessionId, {
@@ -455,10 +486,12 @@ export async function getRecordingStatus(): Promise<{
 }
 
 /**
- * Reset recording tab ID (called during cleanup).
+ * Reset recording tab/window/mode state (called during cleanup).
  */
 export function resetRecordingTabId(): void {
   recordingTabId = null;
+  recordingWindowId = null;
+  recordingCaptureMode = null;
 }
 
 // ─────────────────────────────────────────────────────────────
