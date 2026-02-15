@@ -37,6 +37,7 @@ import {
   handleCaptureError,
   handleDownloadComplete,
   getRecordingStatus,
+  handleMicPermissionResult,
 } from './controllers';
 
 import { closeOffscreenDocument } from './controllers/offscreenController';
@@ -387,6 +388,13 @@ function registerMessageHandlers(): void {
   registerHandler('CONTENT_SCRIPT_READY', (message, _sender, _sendResponse) => {
     console.log('[TraceQA] Received message:', message.type);
     // Acknowledge silently - the one-shot listener handles the actual handshake
+    return false;
+  });
+
+  // Microphone permission result from permission popup window
+  registerHandler('MIC_PERMISSION_RESULT', (message, _sender, _sendResponse) => {
+    console.log('[TraceQA] Received message:', message.type);
+    handleMicPermissionResult(message.payload);
     return false;
   });
 

@@ -22,10 +22,14 @@ export function RecordingButton({
   isLoading = false,
 }: RecordingButtonProps): React.ReactElement {
   const handleClick = (): void => {
+    const ts = () => new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    console.log(`[MIC-PERM][BUTTON] handleClick fired at ${ts()} | isRecording: ${isRecording} | disabled: ${disabled} | isLoading: ${isLoading}`);
     if (disabled || isLoading) return;
 
     if (!isRecording) {
+      console.log(`[MIC-PERM][BUTTON] calling onStart() synchronously at ${ts()}`);
       onStart();
+      console.log(`[MIC-PERM][BUTTON] onStart() returned at ${ts()} (async function returned Promise)`);
     } else if (isPaused) {
       onResume();
     } else {

@@ -96,6 +96,8 @@ export async function initializeSession(sessionId: string): Promise<void> {
  * Mark recording as active.
  */
 export async function markRecordingActive(startTime: number): Promise<void> {
+  const formatted = new Date(startTime).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  console.log(`[PersistenceManager] markRecordingActive — startTime: ${formatted} (${startTime})`);
   await updateSessionState({
     isRecording: true,
     startTime,
@@ -115,6 +117,10 @@ export async function markRecordingInactive(): Promise<void> {
  * Persist pause timing data.
  */
 export async function persistPauseTiming(pauseStartTime: number | null, totalPausedTime: number): Promise<void> {
+  const pauseFormatted = pauseStartTime !== null
+    ? new Date(pauseStartTime).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : 'null';
+  console.log(`[PersistenceManager] persistPauseTiming — pauseStart: ${pauseFormatted}, totalPaused: ${totalPausedTime}ms`);
   await updateSessionState({
     fsmPauseStartTime: pauseStartTime,
     fsmTotalPausedTime: totalPausedTime,

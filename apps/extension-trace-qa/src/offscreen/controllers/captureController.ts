@@ -81,8 +81,11 @@ export async function startCapture(
     // already triggered the browser permission dialog. If it fails for any reason,
     // we fall back to video-only — audio must never block recording.
     audioEnabled = config.audioEnabled ?? false;
+    const ts = () => new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    console.log('[MIC-PERM][OFFSCREEN] audioEnabled flag received:', audioEnabled);
     if (audioEnabled) {
-      console.log('[CaptureController] Initializing audio pipeline (permission pre-granted by popup)');
+      console.log(`[MIC-PERM][OFFSCREEN] Initializing audio pipeline at ${ts()}`);
+      console.log('[MIC-PERM][OFFSCREEN] offscreen context URL:', window.location.href);
 
       try {
         // Initialize audio manager

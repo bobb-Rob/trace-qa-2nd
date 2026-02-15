@@ -34,8 +34,19 @@ export async function enable(): Promise<MediaStream | null> {
   }
 
   try {
-    console.log('[AudioManager] Requesting microphone access');
-    
+    const ts = () => new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    console.log(`[MIC-PERM][OFFSCREEN:AudioManager] Requesting microphone access at ${ts()}`);
+    console.log('[MIC-PERM][OFFSCREEN:AudioManager] navigator.mediaDevices exists:', !!navigator.mediaDevices);
+    console.log('[MIC-PERM][OFFSCREEN:AudioManager] getUserMedia exists:', !!(navigator.mediaDevices?.getUserMedia));
+
+    // Check permission state in offscreen context
+    try {
+      const permStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+      console.log('[MIC-PERM][OFFSCREEN:AudioManager] microphone permission state:', permStatus.state);
+    } catch (permQueryError) {
+      console.warn('[MIC-PERM][OFFSCREEN:AudioManager] Permissions API query failed:', permQueryError);
+    }
+
     micStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
@@ -69,6 +80,13 @@ export async function enable(): Promise<MediaStream | null> {
 
     return micStream;
   } catch (err) {
+    const errName = err instanceof DOMException ? err.name : 'Unknown';
+    const errMsg = err instanceof Error ? err.message : String(err);
+    const tsErr = new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    console.error(`[MIC-PERM][OFFSCREEN:AudioManager] getUserMedia FAILED at ${tsErr}`);
+    console.error(`[MIC-PERM][OFFSCREEN:AudioManager] error.name: ${errName}`);
+    console.error(`[MIC-PERM][OFFSCREEN:AudioManager] error.message: ${errMsg}`);
+    console.error('[MIC-PERM][OFFSCREEN:AudioManager] full error object:', err);
     console.warn('[AudioManager] Microphone permission denied or unavailable:', err);
     enabled = false;
     micStream = null;

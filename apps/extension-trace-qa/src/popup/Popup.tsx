@@ -12,7 +12,10 @@ export function Popup(): React.ReactElement {
   const [localError, setLocalError] = useState<string | null>(null);
 
   const handleStart = async (): Promise<void> => {
+    const ts = () => new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    console.log(`[MIC-PERM][POPUP] handleStart entered at ${ts()} (async function, sync portion)`);
     try {
+      console.log(`[MIC-PERM][POPUP] about to await startRecording() at ${ts()}`);
       await startRecording();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

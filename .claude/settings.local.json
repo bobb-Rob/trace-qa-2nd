@@ -11,7 +11,10 @@
       "Bash(npm run type-check:*)",
       "Bash(npm run typecheck:*)",
       "Bash(npx turbo run build:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(dir:*)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:www.recall.ai)"
     ]
   }
 }

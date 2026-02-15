@@ -34,6 +34,7 @@ export {
   handleCaptureError,
   handleDownloadComplete,
   getRecordingStatus,
+  handleMicPermissionResult,
 } from './sessionController';
 
 // Audio Controller (Phase 6)

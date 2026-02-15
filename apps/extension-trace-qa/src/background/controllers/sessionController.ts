@@ -62,6 +62,9 @@ export async function startRecordingSession(payload: {
 }): Promise<{ success: boolean; sessionId?: string; error?: string }> {
   try {
     console.log('[SessionController] Starting recording:', payload.sessionId);
+    const ts = () => new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    console.log(`[MIC-PERM][BACKGROUND] START_RECORDING received at ${ts()}`);
+    console.log('[MIC-PERM][BACKGROUND] audioSource from payload:', payload.videoConfig.audioSource);
 
     // Check current state via FSM
     if (getState() !== 'IDLE') {
@@ -93,25 +96,23 @@ export async function startRecordingSession(payload: {
     // 2. Get recorder config based on quality setting
     const qualityConfig = RECORDER_CONFIG[payload.videoConfig.quality];
 
-    // 3. Send message to offscreen to start capture
-    // State stays STARTING until we receive OFFSCREEN_CAPTURE_STARTED
-    // Audio is enabled only if user selected MICROPHONE AND permission was granted.
-    // The popup persists micPermissionGranted to storage after the permission prompt.
-    const storageData = await chrome.storage.local.get(['micPermissionGranted']);
-    const micPermissionGranted = storageData.micPermissionGranted === true;
-    const audioEnabled = payload.videoConfig.audioSource === 'MICROPHONE' && micPermissionGranted;
-
-    if (payload.videoConfig.audioSource === 'MICROPHONE' && !micPermissionGranted) {
-      console.warn('[SessionController] Mic selected but permission not granted, recording video-only');
+    // 3. Ensure microphone permission if user selected MICROPHONE.
+    // Opens a small popup window (chrome-extension:// origin) to trigger the
+    // browser permission prompt. Subsequent recordings auto-grant silently.
+    let audioEnabled = false;
+    if (payload.videoConfig.audioSource === 'MICROPHONE') {
+      audioEnabled = await ensureMicPermission();
+      console.log('[MIC-PERM][BACKGROUND] audioEnabled after permission check:', audioEnabled);
     }
 
+    // 4. Send message to offscreen to start capture
     startCapture(payload.sessionId, {
       mimeType: qualityConfig.mimeType,
       videoBitsPerSecond: qualityConfig.videoBitsPerSecond,
       width: qualityConfig.width,
       height: qualityConfig.height,
       frameRate: qualityConfig.frameRate,
-      audioEnabled, // Phase 7: Respect user's audio preference from UI
+      audioEnabled,
     });
 
     // Response is immediate - actual RECORDING state comes via OFFSCREEN_CAPTURE_STARTED
@@ -261,6 +262,8 @@ export async function handleCaptureStarted(payload: { sessionId: string }): Prom
 
   // Update context with recording start time
   const startTime = Date.now();
+  const startTimeFormatted = new Date(startTime).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  console.log(`[SessionController] Recording startTime: ${startTimeFormatted} (${startTime})`);
   updateContext({ recordingStartTime: startTime });
 
   // Persist recording state
@@ -285,6 +288,8 @@ export async function handleOffscreenPaused(payload: { sessionId: string }): Pro
 
   // Track when pause started for duration calculation
   const pauseStartTime = Date.now();
+  const pauseFormatted = new Date(pauseStartTime).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  console.log(`[SessionController] Pause started at: ${pauseFormatted}`);
   const ctx = getContext();
   updateContext({ pauseStartTime });
 
@@ -311,6 +316,7 @@ export async function handleOffscreenResumed(payload: { sessionId: string }): Pr
   if (ctx.pauseStartTime !== null) {
     const pauseDuration = Date.now() - ctx.pauseStartTime;
     const newTotalPausedTime = ctx.totalPausedTime + pauseDuration;
+    console.log(`[SessionController] Resume — paused for ${pauseDuration}ms, total paused: ${newTotalPausedTime}ms`);
     updateContext({
       pauseStartTime: null,
       totalPausedTime: newTotalPausedTime,
@@ -453,4 +459,97 @@ export async function getRecordingStatus(): Promise<{
  */
 export function resetRecordingTabId(): void {
   recordingTabId = null;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Microphone Permission Window
+// ─────────────────────────────────────────────────────────────
+
+// Resolver for the permission window promise.
+// Set when the window opens, resolved when MIC_PERMISSION_RESULT arrives.
+let micPermissionResolver: ((granted: boolean) => void) | null = null;
+
+/**
+ * Ensure microphone permission is granted for the extension origin.
+ * Always opens the mic-permission.html popup window to call getUserMedia()
+ * under the chrome-extension:// origin. If permission was already granted,
+ * the window succeeds instantly and auto-closes in ~600ms (no prompt shown).
+ * If not, the browser shows a permission prompt first.
+ *
+ * We cannot skip this step based on a storage flag because Chrome does not
+ * reliably persist getUserMedia permission grants to offscreen documents
+ * across browser sessions.
+ *
+ * @returns true if mic permission is granted, false otherwise
+ */
+async function ensureMicPermission(): Promise<boolean> {
+  const ts = () => new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  // ALWAYS open the permission window to ensure getUserMedia is granted
+  // in the chrome-extension:// origin for THIS browser session.
+  // The storage flag is unreliable — Chrome may not persist the permission
+  // grant to the offscreen document across browser restarts or service worker
+  // lifecycles. The permission window auto-closes in <1s when permission is
+  // already granted (getUserMedia succeeds instantly, no prompt shown).
+  console.log(`[MIC-PERM][BACKGROUND] Opening permission window at ${ts()}`);
+
+  // Open a small popup window for the permission prompt.
+  // This runs under chrome-extension:// origin — same origin as offscreen.
+  const permWindow = await chrome.windows.create({
+    url: chrome.runtime.getURL('mic-permission.html'),
+    type: 'popup',
+    width: 420,
+    height: 260,
+    focused: true,
+  });
+
+  console.log('[MIC-PERM][BACKGROUND] Permission window opened, id:', permWindow.id);
+
+  // Wait for the permission page to send MIC_PERMISSION_RESULT
+  const granted = await new Promise<boolean>((resolve) => {
+    micPermissionResolver = resolve;
+
+    // Safety timeout — if window is closed without responding (user closed it manually)
+    const timeoutId = setTimeout(() => {
+      console.warn('[MIC-PERM][BACKGROUND] Permission window timed out after 60s');
+      if (micPermissionResolver) {
+        micPermissionResolver = null;
+        resolve(false);
+      }
+    }, 60000);
+
+    // Also listen for window close (user might close without granting)
+    const onWindowRemoved = (windowId: number) => {
+      if (permWindow.id !== undefined && windowId === permWindow.id) {
+        chrome.windows.onRemoved.removeListener(onWindowRemoved);
+        clearTimeout(timeoutId);
+        // Give a brief delay for the message to arrive before resolving
+        setTimeout(() => {
+          if (micPermissionResolver) {
+            console.warn('[MIC-PERM][BACKGROUND] Permission window closed without result');
+            micPermissionResolver = null;
+            resolve(false);
+          }
+        }, 500);
+      }
+    };
+    chrome.windows.onRemoved.addListener(onWindowRemoved);
+  });
+
+  console.log(`[MIC-PERM][BACKGROUND] Permission result: ${granted} at ${ts()}`);
+  return granted;
+}
+
+/**
+ * Handle the MIC_PERMISSION_RESULT message from the permission page.
+ * Resolves the pending promise in ensureMicPermission.
+ */
+export function handleMicPermissionResult(payload: { granted: boolean; error?: string }): void {
+  const ts = () => new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  console.log(`[MIC-PERM][BACKGROUND] MIC_PERMISSION_RESULT received at ${ts()}:`, payload);
+
+  if (micPermissionResolver) {
+    micPermissionResolver(payload.granted);
+    micPermissionResolver = null;
+  }
 }
