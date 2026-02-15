@@ -142,6 +142,47 @@ export function useRecordingState(): {
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
+      // PERMISSION GATE: Request microphone permission in the popup IMMEDIATELY.
+      // WHY HERE: Permission prompts require user activation (a click). The popup
+      // is the only UI surface with an active user gesture at this point.
+      // Offscreen documents have USER_MEDIA API access but cannot reliably trigger
+      // browser permission prompts — they are a headless media engine.
+      // This call is the FIRST async operation to preserve the user activation context.
+      const audioEnabled = videoConfig.audioSource === 'MICROPHONE';
+      let micPermissionGranted = false;
+
+      if (audioEnabled) {
+        try {
+          console.log('[Popup] Requesting microphone permission (user gesture context)...');
+          const micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
+
+          // Permission granted — stop tracks immediately.
+          // We only needed this call to trigger the browser permission prompt.
+          // The offscreen document will create its own stream for actual capture.
+          micStream.getTracks().forEach(track => track.stop());
+          micPermissionGranted = true;
+          console.log('[Popup] Microphone permission granted');
+        } catch (micError) {
+          // Log the actual DOMException details for debugging
+          const errName = micError instanceof DOMException ? micError.name : 'Unknown';
+          const errMsg = micError instanceof Error ? micError.message : String(micError);
+          console.warn(`[Popup] Microphone permission denied (${errName}): ${errMsg}`);
+          // Continue with video-only — audio must never block recording
+          micPermissionGranted = false;
+        }
+      }
+
+      // Persist mic permission result so background/offscreen can read it.
+      // On subsequent recordings, the browser will auto-grant without a prompt
+      // if the user previously accepted for this extension origin.
+      await chrome.storage.local.set({ micPermissionGranted });
+
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
       if (!tab.id) {

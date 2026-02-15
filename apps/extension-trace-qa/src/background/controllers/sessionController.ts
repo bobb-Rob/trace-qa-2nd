@@ -95,13 +95,23 @@ export async function startRecordingSession(payload: {
 
     // 3. Send message to offscreen to start capture
     // State stays STARTING until we receive OFFSCREEN_CAPTURE_STARTED
+    // Audio is enabled only if user selected MICROPHONE AND permission was granted.
+    // The popup persists micPermissionGranted to storage after the permission prompt.
+    const storageData = await chrome.storage.local.get(['micPermissionGranted']);
+    const micPermissionGranted = storageData.micPermissionGranted === true;
+    const audioEnabled = payload.videoConfig.audioSource === 'MICROPHONE' && micPermissionGranted;
+
+    if (payload.videoConfig.audioSource === 'MICROPHONE' && !micPermissionGranted) {
+      console.warn('[SessionController] Mic selected but permission not granted, recording video-only');
+    }
+
     startCapture(payload.sessionId, {
       mimeType: qualityConfig.mimeType,
       videoBitsPerSecond: qualityConfig.videoBitsPerSecond,
       width: qualityConfig.width,
       height: qualityConfig.height,
       frameRate: qualityConfig.frameRate,
-      audioEnabled: true, // Phase 7: Enable audio capture by default
+      audioEnabled, // Phase 7: Respect user's audio preference from UI
     });
 
     // Response is immediate - actual RECORDING state comes via OFFSCREEN_CAPTURE_STARTED

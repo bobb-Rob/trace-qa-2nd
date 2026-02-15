@@ -39,8 +39,8 @@ export async function enable(): Promise<MediaStream | null> {
     micStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
-        noiseSuppression: false, // Explicit: avoid browser heuristics
-        autoGainControl: false,  // Deterministic gain control
+        noiseSuppression: true,  // Improves voice clarity by filtering background noise
+        autoGainControl: true,   // CRITICAL: Provides 15-30dB automatic boost for audible volume
         sampleRate: 48000,       // Standard for video
       },
     });

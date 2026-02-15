@@ -59,7 +59,8 @@ export async function startCapture(
     // Clear any previous chunks
     chunkManager.clearChunks();
 
-    // 1. Acquire display stream
+    // 1. Acquire display stream (shows screen/tab/window picker)
+    // The screen picker always appears — this is expected browser behavior.
     const stream = await streamManager.acquireStream({
       frameRate: { ideal: config.frameRate },
       width: { ideal: config.width },
@@ -74,20 +75,24 @@ export async function startCapture(
       }
     });
 
-    // 1.5. Initialize audio pipeline if enabled
+    // 2. Initialize audio pipeline if enabled.
+    // IMPORTANT: Offscreen assumes mic permission was already granted by the popup.
+    // getUserMedia() here should succeed silently (no prompt) because the popup
+    // already triggered the browser permission dialog. If it fails for any reason,
+    // we fall back to video-only — audio must never block recording.
     audioEnabled = config.audioEnabled ?? false;
     if (audioEnabled) {
-      console.log('[CaptureController] Initializing audio pipeline');
-      
+      console.log('[CaptureController] Initializing audio pipeline (permission pre-granted by popup)');
+
       try {
         // Initialize audio manager
         audioManager.initialize();
-        
-        // Request microphone access
+
+        // getUserMedia() — should auto-grant since popup already obtained permission
         const micStream = await audioManager.enable();
-        
+
         if (!micStream) {
-          console.warn('[CaptureController] Microphone access denied, continuing video-only');
+          console.warn('[CaptureController] Microphone unavailable, continuing video-only');
           if (audioUnavailableCallback) {
             audioUnavailableCallback('permission_denied', 'Microphone permission denied');
           }
@@ -129,7 +134,7 @@ export async function startCapture(
             }
             audioEnabled = false;
             audioInitialized = false;
-            
+
             // Cleanup partial audio state
             try {
               audioManager.disable();
@@ -146,7 +151,7 @@ export async function startCapture(
         }
         audioEnabled = false;
         audioInitialized = false;
-        
+
         // Ensure audio state is clean
         try {
           audioManager.disable();
@@ -156,7 +161,7 @@ export async function startCapture(
       }
     }
 
-    // 2. Create MediaRecorder
+    // 3. Create MediaRecorder
     recorderManager.createRecorder(stream, {
       mimeType: config.mimeType,
       videoBitsPerSecond: config.videoBitsPerSecond,

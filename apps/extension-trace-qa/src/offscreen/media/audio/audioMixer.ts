@@ -27,7 +27,9 @@ export function initialize(): void {
     // Create audio graph: source → gain → destination
     destination = audioContext.createMediaStreamDestination();
     gainNode = audioContext.createGain();
-    gainNode.gain.value = 1; // Start unmuted
+    // Start with 2.5x gain (≈8dB boost) for comfortable listening levels
+    // AGC provides baseline boost, this ensures minimum audibility
+    gainNode.gain.value = 2.5; // Start unmuted with amplification
 
     // Connect gain to destination
     gainNode.connect(destination);
@@ -112,7 +114,8 @@ export function setMuted(muted: boolean): void {
 
   // Use GainNode for deterministic mute (gain = 0)
   // This avoids MediaRecorder glitches and allows instant unmute
-  gainNode.gain.value = muted ? 0 : 1;
+  // When unmuting, restore to 2.5x gain for comfortable volume
+  gainNode.gain.value = muted ? 0 : 2.5;
   isMuted = muted;
 
   console.log('[AudioMixer] Mute state changed:', { muted });

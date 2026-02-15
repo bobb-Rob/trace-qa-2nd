@@ -25,8 +25,8 @@ export async function createOffscreenDocument(): Promise<void> {
   console.log('[OffscreenController] Creating offscreen document');
   await chrome.offscreen.createDocument({
     url: OFFSCREEN_DOCUMENT_PATH,
-    reasons: [chrome.offscreen.Reason.USER_MEDIA],
-    justification: 'Recording screen capture with MediaRecorder',
+    reasons: [chrome.offscreen.Reason.USER_MEDIA, chrome.offscreen.Reason.DISPLAY_MEDIA],
+    justification: 'Recording screen capture with microphone audio using MediaRecorder',
   });
 }
 

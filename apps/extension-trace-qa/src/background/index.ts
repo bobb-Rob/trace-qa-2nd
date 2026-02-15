@@ -266,7 +266,7 @@ function registerMessageHandlers(): void {
     
     chrome.notifications.create({
       type: 'basic',
-      iconUrl: chrome.runtime.getURL('icons/icon-48.png'),
+      iconUrl: chrome.runtime.getURL('icons/icon48.png'), // Fixed: removed hyphen
       title: 'TraceQA Recording',
       message: notificationMessage,
       priority: 1,
