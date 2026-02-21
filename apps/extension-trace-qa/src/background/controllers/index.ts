@@ -39,6 +39,15 @@ export {
   handleMicPermissionResult,
 } from './sessionController';
 
+// Telemetry Controller
+export {
+  handleTelemetryBatch,
+  broadcastSessionStarted,
+  broadcastSessionStartedToAll,
+  broadcastSessionEnded as broadcastTelemetrySessionEnded,
+  consolidateSessionTelemetry,
+} from './telemetryController';
+
 // Audio Controller (Phase 6)
 export {
   initAudioController,

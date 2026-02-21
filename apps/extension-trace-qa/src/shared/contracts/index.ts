@@ -155,6 +155,24 @@ export {
 } from './validation';
 
 // ============================================
+// TELEMETRY PAYLOAD
+// ============================================
+export {
+  type RecordedSession,
+  type TimelineEvent,
+  type InteractionEvent,
+  type NavigationEvent as ConsolidatedNavigationEvent,
+  type NetworkRequest,
+  type AggregatedNetworkGroup,
+  type ConsoleLogEntry,
+  type ErrorEntry,
+  type VisibilityEvent,
+  type DOMSnapshot,
+  type SessionMetrics,
+  type DerivedInsights,
+} from './telemetryPayload';
+
+// ============================================
 // AGGREGATE TYPES
 // ============================================
 

@@ -244,16 +244,18 @@ export interface ContentShowFloatingPanePayload extends ShowFloatingPanePayload 
 }
 
 /**
- * Messages from Background → Content Script (for FloatingPane control)
+ * Messages from Background → Content Script (FloatingPane control + telemetry lifecycle)
  */
 export type BackgroundToContentMessage =
   | { type: 'PING' }  // Lightweight check if content script is loaded
   | { type: 'CONTENT_SHOW_FLOATING_PANE'; payload: ContentShowFloatingPanePayload }
   | { type: 'CONTENT_UPDATE_FLOATING_PANE'; payload: UpdateFloatingPanePayload }
-  | { type: 'CONTENT_HIDE_FLOATING_PANE' };
+  | { type: 'CONTENT_HIDE_FLOATING_PANE' }
+  | { type: 'SESSION_STARTED'; payload: { sessionId: string; startTime: number; tabId: number; telemetryConfig?: import('../contracts/broadcasts').TelemetryConfig } }
+  | { type: 'SESSION_ENDED'; payload: { sessionId: string } };
 
 /**
- * Messages from Content Script → Background (user intents from FloatingPane)
+ * Messages from Content Script → Background (user intents from FloatingPane + telemetry)
  * Note: Uses explicit MUTE/UNMUTE instead of toggle for clear intent.
  */
 export type ContentToBackgroundMessage =
@@ -265,7 +267,8 @@ export type ContentToBackgroundMessage =
   | { type: 'FLOATING_PANE_MUTE'; payload: { sessionId: string } }  // Explicit mute (NOT toggle)
   | { type: 'FLOATING_PANE_UNMUTE'; payload: { sessionId: string } }  // Explicit unmute (NOT toggle)
   | { type: 'FLOATING_PANE_TOGGLE_MUTE'; payload: { sessionId: string } }  // @deprecated - use MUTE/UNMUTE
-  | { type: 'FLOATING_PANE_POSITION_CHANGED'; payload: { x: number; y: number } };
+  | { type: 'FLOATING_PANE_POSITION_CHANGED'; payload: { x: number; y: number } }
+  | { type: 'CONTENT_TELEMETRY_BATCH'; payload: import('../contracts/events').ContentTelemetryBatchEvent['payload'] };
 
 // ─────────────────────────────────────────────────────────────
 // Re-export from contracts module for gradual migration

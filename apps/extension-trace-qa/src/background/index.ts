@@ -42,6 +42,11 @@ import {
   handleMicPermissionResult,
   getAudioState,
   setMuted,
+  handleTelemetryBatch,
+  broadcastSessionStarted,
+  broadcastSessionStartedToAll,
+  broadcastTelemetrySessionEnded,
+  consolidateSessionTelemetry,
 } from './controllers';
 
 import { closeOffscreenDocument } from './controllers/offscreenController';
@@ -59,11 +64,14 @@ import {
   updateAllFloatingPanes,
   hideAllFloatingPanes,
   initializeTabTracking,
+  setPostInjectionCallback,
 } from './ui/floatingPaneController';
 
 import {
   clearSessionState,
 } from './persistence/persistenceManager';
+
+import { initTelemetryStore } from './persistence/telemetryStore';
 
 console.log('[TraceQA] Background service worker started');
 
@@ -132,6 +140,31 @@ function broadcastSessionEnded(
  */
 async function finalizeSession(error?: string): Promise<void> {
   console.log('[TraceQA] Finalizing session', error ? `(error: ${error})` : '(success)');
+
+  // Broadcast SESSION_ENDED to content scripts for telemetry flush
+  const ctx = getContext();
+  if (ctx.sessionId) {
+    await broadcastTelemetrySessionEnded(ctx.sessionId).catch(() => {});
+
+    // Consolidate telemetry into RecordedSession (only on successful sessions)
+    if (!error) {
+      const captureModeMap: Record<string, 'tab' | 'window' | 'screen'> = {
+        TAB: 'tab', WINDOW: 'window', DESKTOP: 'screen',
+      };
+      await consolidateSessionTelemetry({
+        sessionId: ctx.sessionId,
+        startTime: ctx.recordingStartTime ?? Date.now(),
+        tabId: getRecordingTabId() ?? 0,
+        captureMode: captureModeMap[getRecordingCaptureMode() ?? 'TAB'] ?? 'tab',
+        micEnabled: getAudioState().enabled,
+      }).catch((e) => {
+        console.warn('[TraceQA] Telemetry consolidation failed:', e);
+      });
+    }
+  }
+
+  // Clear post-injection callback
+  setPostInjectionCallback(null);
 
   // Stop state broadcast immediately
   stopStateBroadcast();
@@ -226,6 +259,25 @@ function registerMessageHandlers(): void {
         getRecordingTabId(),
         getRecordingWindowId()
       );
+
+      // Broadcast SESSION_STARTED to all in-scope content scripts for telemetry capture
+      const ctx = getContext();
+      broadcastSessionStartedToAll(
+        message.payload.sessionId,
+        ctx.recordingStartTime ?? Date.now(),
+        getRecordingCaptureMode(),
+        getRecordingTabId(),
+        getRecordingWindowId(),
+      ).catch((e) => console.warn('[TraceQA] Failed to broadcast SESSION_STARTED:', e));
+
+      // Set callback so re-injected tabs (after navigation) also get SESSION_STARTED
+      setPostInjectionCallback((tabId) => {
+        const postCtx = getContext();
+        if (postCtx.sessionId && postCtx.recordingStartTime) {
+          broadcastSessionStarted(postCtx.sessionId, postCtx.recordingStartTime, tabId)
+            .catch(() => {});
+        }
+      });
     });
     return false;
   });
@@ -401,6 +453,17 @@ function registerMessageHandlers(): void {
     return false;
   });
 
+  // Telemetry batch from content script
+  registerHandler('CONTENT_TELEMETRY_BATCH', (message, sender, sendResponse) => {
+    handleTelemetryBatch(message, sender)
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => {
+        console.error('[TraceQA] Failed to store telemetry batch:', error);
+        sendResponse({ success: false, error: error instanceof Error ? error.message : 'Storage error' });
+      });
+    return true;
+  });
+
   console.log('[TraceQA] All message handlers registered');
 }
 
@@ -476,7 +539,10 @@ async function handleToggleMute(
     // Step 4: Validate state (self-healing)
     await validateStateOnWake();
 
-    // Step 5: Initialize message router and register handlers
+    // Step 5: Initialize telemetry store
+    await initTelemetryStore();
+
+    // Step 6: Initialize message router and register handlers
     initializeRouter();
     registerMessageHandlers();
 

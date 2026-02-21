@@ -26,6 +26,17 @@ let currentCaptureMode: CaptureMode | null = null;
 let currentWindowId: number | null = null;
 let lastShowPayload: ContentShowFloatingPanePayload | null = null;
 
+// Post-injection callback for telemetry activation
+let postInjectionCallback: ((tabId: number) => void) | null = null;
+
+/**
+ * Set a callback to be invoked after a content script is injected into a tab.
+ * Used by background/index.ts to send SESSION_STARTED after re-injection on navigation.
+ */
+export function setPostInjectionCallback(cb: ((tabId: number) => void) | null): void {
+  postInjectionCallback = cb;
+}
+
 /**
  * Check if a tab URL is injectable (content scripts can only run on http/https/file).
  */
@@ -184,6 +195,7 @@ async function injectIntoTab(tabId: number, payload: ContentShowFloatingPanePayl
   if (ready) {
     await showFloatingPane(tabId, payload);
     activePaneTabs.add(tabId);
+    postInjectionCallback?.(tabId);
   }
 }
 

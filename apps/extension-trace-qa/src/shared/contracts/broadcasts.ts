@@ -89,6 +89,10 @@ export interface TelemetryConfig {
   captureScrolls: boolean;
   captureNavigation: boolean;
   captureErrors: boolean;
+  captureNetwork: boolean;
+  captureConsole: boolean;
+  captureDomSnapshots: boolean;
+  captureVisibility: boolean;
   batchIntervalMs: number;
   maxBatchSize: number;
 }

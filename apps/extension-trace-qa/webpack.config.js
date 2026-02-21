@@ -9,6 +9,7 @@ module.exports = {
     background: './src/background/index.ts',
     offscreen: './src/offscreen/index.ts',
     content: './src/content/index.ts',
+    'content/main-world': './src/content/main-world.ts',
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
