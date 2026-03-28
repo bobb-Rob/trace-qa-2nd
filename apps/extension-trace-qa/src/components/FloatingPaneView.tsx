@@ -94,7 +94,7 @@ export const FloatingPaneView: React.FC<FloatingPaneViewProps> = ({
       const rect = hostElement.getBoundingClientRect();
       const defaultPos = {
         x: (window.innerWidth - rect.width) / 2,
-        y: window.innerHeight - rect.height - 10,
+        y: 10,
       };
       currentPositionRef.current = defaultPos;
       applyPosition(defaultPos);
@@ -345,17 +345,17 @@ function generateStyles(): string {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 12px;
-      background: rgba(30, 30, 30, 0.95);
-      border-radius: 8px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      padding: 8px 14px;
+      background: linear-gradient(to bottom right, #f9fafb, #f3f4f6);
+      border-radius: 10px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
       cursor: move;
       user-select: none;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid #e5e7eb;
     }
 
     .floating-pane:hover {
-      background: rgba(40, 40, 40, 0.98);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1);
     }
 
     .recording-dot {
@@ -379,7 +379,7 @@ function generateStyles(): string {
     .timer {
       font-size: 14px;
       font-weight: 600;
-      color: #ffffff;
+      color: #111827;
       font-variant-numeric: tabular-nums;
       min-width: 60px;
       text-align: center;
@@ -388,7 +388,7 @@ function generateStyles(): string {
     .divider {
       width: 1px;
       height: 20px;
-      background: rgba(255, 255, 255, 0.2);
+      background: #e5e7eb;
     }
 
     button {
@@ -399,15 +399,15 @@ function generateStyles(): string {
       height: 32px;
       border: none;
       border-radius: 6px;
-      background: rgba(255, 255, 255, 0.1);
-      color: #ffffff;
+      background: #e5e7eb;
+      color: #374151;
       cursor: pointer;
       transition: all 0.15s ease;
       font-size: 16px;
     }
 
     button:hover {
-      background: rgba(255, 255, 255, 0.2);
+      background: #d1d5db;
     }
 
     button:active {
@@ -415,38 +415,42 @@ function generateStyles(): string {
     }
 
     .pause-btn {
-      background: rgba(59, 130, 246, 0.8);
+      background: #2563eb;
+      color: #ffffff;
     }
 
     .pause-btn:hover:not(:disabled) {
-      background: rgba(59, 130, 246, 1);
+      background: #1d4ed8;
     }
 
     .pause-btn.paused {
-      background: rgba(34, 197, 94, 0.8);
+      background: #16a34a;
+      color: #ffffff;
     }
 
     .pause-btn.paused:hover:not(:disabled) {
-      background: rgba(34, 197, 94, 1);
+      background: #15803d;
     }
 
     .pause-btn.disabled,
     .pause-btn:disabled {
-      background: rgba(107, 114, 128, 0.4);
-      color: rgba(255, 255, 255, 0.4);
+      background: #d1d5db;
+      color: #9ca3af;
       cursor: not-allowed;
     }
 
     .pause-btn:disabled:hover {
-      background: rgba(107, 114, 128, 0.4);
+      background: #d1d5db;
     }
 
     .mute-btn.muted {
-      background: rgba(239, 68, 68, 0.6);
+      background: #ef4444;
+      color: #ffffff;
     }
 
     .mute-btn.audio-unavailable {
-      background: rgba(107, 114, 128, 0.6);
+      background: #d1d5db;
+      color: #6b7280;
       cursor: help;
       position: relative;
     }
@@ -475,13 +479,13 @@ function generateStyles(): string {
       left: 50%;
       transform: translateX(-50%);
       padding: 8px 12px;
-      background: rgba(30, 30, 30, 0.98);
-      color: #fff;
+      background: #ffffff;
+      color: #111827;
       font-size: 12px;
-      border-radius: 6px;
+      border-radius: 8px;
       white-space: nowrap;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      border: 1px solid #e5e7eb;
       z-index: 10;
       max-width: 280px;
       white-space: normal;
@@ -494,17 +498,18 @@ function generateStyles(): string {
     }
 
     .audio-tooltip a {
-      color: #60a5fa;
+      color: #2563eb;
       text-decoration: underline;
       cursor: pointer;
     }
 
     .stop-btn {
-      background: rgba(239, 68, 68, 0.8);
+      background: #ef4444;
+      color: #ffffff;
     }
 
     .stop-btn:hover {
-      background: rgba(239, 68, 68, 1);
+      background: #dc2626;
     }
 
     .warning {
@@ -514,12 +519,13 @@ function generateStyles(): string {
       left: 50%;
       transform: translateX(-50%);
       padding: 6px 12px;
-      background: rgba(245, 158, 11, 0.95);
-      color: #000;
+      background: #fef3c7;
+      color: #92400e;
       font-size: 12px;
       font-weight: 500;
-      border-radius: 4px;
+      border-radius: 6px;
       white-space: nowrap;
+      border: 1px solid #fde68a;
     }
 
     .warning.visible {

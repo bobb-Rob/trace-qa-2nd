@@ -72,6 +72,7 @@ export function useRecordingState(): {
   setVideoConfig: (config: VideoRecordingConfig) => void;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
+  resumeRecording: () => Promise<void>;
 } {
   const [state, setState] = useState<PopupRecordingState>(initialState);
   const [videoConfig, setVideoConfigState] = useState<VideoRecordingConfig>(defaultVideoConfig);
@@ -138,9 +139,17 @@ export function useRecordingState(): {
   }, []);
 
   const startRecording = useCallback(async (): Promise<void> => {
+    const ts = () => new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    console.log(`[MIC-PERM][POPUP] startRecording entered at ${ts()}`);
+
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
+      // Microphone permission is now handled by the background service worker.
+      // It opens a small popup window (mic-permission.html) under the extension's
+      // chrome-extension:// origin to trigger the browser permission prompt.
+      // The popup no longer calls getUserMedia directly (it would close on blur).
+
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
       if (!tab.id) {
@@ -149,14 +158,15 @@ export function useRecordingState(): {
 
       const randomId = Math.random().toString(36).substring(2, 11);
       const now = new Date();
+      // 24hr human-readable format: "feb_8_2026_13-27"
       const formattedDate = now
         .toLocaleString('en-US', {
           month: 'short',
           day: 'numeric',
           year: 'numeric',
-          hour: 'numeric',
+          hour: '2-digit',
           minute: '2-digit',
-          hour12: true
+          hour12: false
         })
         .toLowerCase()
         .replace(/[, ]+/g, '_')
@@ -191,6 +201,8 @@ export function useRecordingState(): {
       // Recording has actually started - now get the real start time from storage
       const storageData = await chrome.storage.local.get(['startTime']);
       const startTime = storageData.startTime ?? Date.now();
+      const startTimeFormatted = new Date(startTime).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      console.log(`[MIC-PERM][POPUP] Recording started at: ${startTimeFormatted}`);
 
       setState({
         isRecording: true,
@@ -244,5 +256,31 @@ export function useRecordingState(): {
     }
   }, [state.sessionId]);
 
-  return { state, videoConfig, setVideoConfig, startRecording, stopRecording };
+  const resumeRecording = useCallback(async (): Promise<void> => {
+    if (!state.isPaused || !state.sessionId) {
+      return;
+    }
+
+    setState((prev) => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'UI_RESUME_REQUESTED',
+        payload: { sessionId: state.sessionId },
+      });
+
+      if (!response?.success) {
+        throw new Error(response?.error || 'Failed to resume recording');
+      }
+
+      // State update will come via UI_STATE_UPDATE broadcast from background
+      setState((prev) => ({ ...prev, isLoading: false }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to resume recording';
+      setState((prev) => ({ ...prev, error: errorMessage, isLoading: false }));
+      throw error;
+    }
+  }, [state.sessionId, state.isPaused]);
+
+  return { state, videoConfig, setVideoConfig, startRecording, stopRecording, resumeRecording };
 }

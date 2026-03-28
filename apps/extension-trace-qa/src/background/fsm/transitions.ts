@@ -34,6 +34,7 @@ export const TRANSITION_TABLE: Record<
   RECORDING: {
     STOP_REQUESTED: 'STOPPING',
     STREAM_ENDED: 'UPLOADING', // External termination (Stop sharing) - still save video
+    CAPTURE_STOPPED: 'UPLOADING', // External stop finalized (blob stored, ready for download)
     PAUSE_REQUESTED: 'PAUSED', // User requested pause
     CAPTURE_FAILED: 'IDLE', // Error with no salvageable data -> IDLE
     FORCE_RESET: 'IDLE',
@@ -42,6 +43,7 @@ export const TRANSITION_TABLE: Record<
     RESUME_REQUESTED: 'RECORDING', // User requested resume
     STOP_REQUESTED: 'STOPPING',    // Can stop while paused
     STREAM_ENDED: 'UPLOADING',     // External stop while paused - still save video
+    CAPTURE_STOPPED: 'UPLOADING',  // External stop finalized while paused
     CAPTURE_FAILED: 'IDLE',        // Error while paused -> IDLE
     FORCE_RESET: 'IDLE',
   },

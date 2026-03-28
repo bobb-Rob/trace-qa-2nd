@@ -1,51 +1,33 @@
 /**
- * Offscreen Document - Media Engine
- * Responsibilities: MediaRecorder, blob management, chunk accumulation
+ * Offscreen Document - Media Capture Orchestration
+ *
+ * Thin orchestration layer that wires together modular components:
+ * - Media modules (stream, recorder)
+ * - Data modules (chunks, storage)
+ * - Message routing
+ *
+ * This file delegates to specialized modules and coordinates message handling.
  */
 
-import { RECORDING_LIMITS, IDB_CONFIG, SUPPORTED_MIME_TYPES } from '../shared/types';
+import { SUPPORTED_MIME_TYPES } from '../shared/types';
+import * as storageManager from './data/storageManager';
+import * as captureController from './controllers/captureController';
+import { registerHandler, initializeRouter } from './routing/messageRouter';
 
-let mediaRecorder: MediaRecorder | null = null;
-let currentSessionId: string | null = null;
-let recordedChunks: Blob[] = [];
-let currentSize = 0;
-let recordingStartTime: number | null = null;
+console.log('[Offscreen] Initializing offscreen document');
 
-// Flags to track stop intent
-let stopRequested = false;      // Set when background sends OFFSCREEN_STOP_CAPTURE
-let streamEndedExternally = false; // Set when track.onended fires (user clicked "Stop sharing")
-
-// Initialize IndexedDB
-async function initDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(IDB_CONFIG.DB_NAME, IDB_CONFIG.DB_VERSION);
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(IDB_CONFIG.STORE_NAME)) {
-        db.createObjectStore(IDB_CONFIG.STORE_NAME);
-      }
-    };
+// Initialize storage on load
+storageManager.initializeDatabase()
+  .then(() => {
+    console.log('[Offscreen] Storage initialized');
+  })
+  .catch((error) => {
+    console.error('[Offscreen] Failed to initialize storage:', error);
   });
-}
 
-// Store blob in IndexedDB
-async function storeBlob(key: string, blob: Blob): Promise<void> {
-  const db = await initDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(IDB_CONFIG.STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(IDB_CONFIG.STORE_NAME);
-    const request = store.put(blob, key);
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve();
-  });
-}
-
-// Get supported MIME type
+/**
+ * Get supported MIME type, falling back to best available.
+ */
 function getSupportedMimeType(preferredMimeType: string): string {
   if (MediaRecorder.isTypeSupported(preferredMimeType)) {
     return preferredMimeType;
@@ -53,7 +35,7 @@ function getSupportedMimeType(preferredMimeType: string): string {
 
   for (const mimeType of SUPPORTED_MIME_TYPES) {
     if (MediaRecorder.isTypeSupported(mimeType)) {
-      console.log(`[TraceQA:Offscreen] Using fallback MIME type: ${mimeType}`);
+      console.log(`[Offscreen] Using fallback MIME type: ${mimeType}`);
       return mimeType;
     }
   }
@@ -61,429 +43,343 @@ function getSupportedMimeType(preferredMimeType: string): string {
   throw new Error('No supported video MIME type found');
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  console.log('[TraceQA:Offscreen] Received message:', message.type);
+// ─────────────────────────────────────────────────────────────
+// Message Handlers
+// ─────────────────────────────────────────────────────────────
 
-  switch (message.type) {
-    case 'OFFSCREEN_START_CAPTURE':
-      handleStartCapture(message.payload, sendResponse);
-      return true;
+/**
+ * Handle OFFSCREEN_START_CAPTURE
+ */
+registerHandler('OFFSCREEN_START_CAPTURE', (message, _sender, sendResponse) => {
+  (async () => {
+    try {
+      const { sessionId, config } = message.payload;
 
-    case 'OFFSCREEN_STOP_CAPTURE':
-      handleStopCapture(message.payload, sendResponse);
-      return true;
+      // Validate MIME type support
+      const mimeType = getSupportedMimeType(config.mimeType);
 
-    case 'OFFSCREEN_PAUSE_RECORDING':
-      handlePauseRecording(message.payload, sendResponse);
-      return true;
+      // Start capture with validated config
+      await captureController.startCapture(sessionId, {
+        mimeType,
+        videoBitsPerSecond: config.videoBitsPerSecond,
+        width: config.width,
+        height: config.height,
+        frameRate: config.frameRate,
+        audioEnabled: config.audioEnabled ?? false, // Phase 7: Audio support
+      });
 
-    case 'OFFSCREEN_RESUME_RECORDING':
-      handleResumeRecording(message.payload, sendResponse);
-      return true;
+      // Notify background of successful start
+      chrome.runtime.sendMessage({
+        type: 'OFFSCREEN_CAPTURE_STARTED',
+        payload: { sessionId },
+      });
 
-    case 'OFFSCREEN_DOWNLOAD_BLOB':
-      handleDownloadBlob(message.payload, sendResponse);
-      return true;
+      sendResponse({ success: true });
+    } catch (error) {
+      console.error('[Offscreen] Start capture error:', error);
 
-    default:
-      return false;
-  }
+      chrome.runtime.sendMessage({
+        type: 'OFFSCREEN_CAPTURE_ERROR',
+        payload: {
+          sessionId: message.payload.sessionId,
+          errorCode: 'ENCODER_ERROR',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        },
+      });
+
+      sendResponse({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  })();
+
+  return true;
 });
 
-async function handleStartCapture(
-  payload: {
-    sessionId: string;
-    config: {
-      mimeType: string;
-      videoBitsPerSecond: number;
-      width: number;
-      height: number;
-      frameRate: number;
-    };
-  },
-  sendResponse: (response: unknown) => void
-): Promise<void> {
-  try {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      sendResponse({ success: false, error: 'Already recording' });
-      return;
-    }
-
-    currentSessionId = payload.sessionId;
-    recordedChunks = [];
-    currentSize = 0;
-    recordingStartTime = Date.now();
-    stopRequested = false;
-    streamEndedExternally = false;
-
-    // Request screen capture from the offscreen document
-    // Since we're in offscreen context, we can call getDisplayMedia
-    let stream: MediaStream;
+/**
+ * Handle OFFSCREEN_STOP_CAPTURE
+ */
+registerHandler('OFFSCREEN_STOP_CAPTURE', (_message, _sender, sendResponse) => {
+  (async () => {
     try {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          width: { ideal: payload.config.width },
-          height: { ideal: payload.config.height },
-          frameRate: { ideal: payload.config.frameRate },
-        },
-        audio: false,
+      await captureController.stopCapture();
+
+      sendResponse({ success: true });
+    } catch (error) {
+      console.error('[Offscreen] Stop capture error:', error);
+      sendResponse({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
-    } catch (err) {
-      console.error('[TraceQA:Offscreen] getDisplayMedia failed:', err);
-      chrome.runtime.sendMessage({
-        type: 'OFFSCREEN_CAPTURE_ERROR',
-        payload: {
-          sessionId: currentSessionId,
-          errorCode: 'PERMISSION_DENIED',
-          message: 'Failed to get display media',
-        },
-      });
-      sendResponse({ success: false, error: 'Permission denied' });
-      return;
     }
+  })();
 
-    // Get supported MIME type
-    const mimeType = getSupportedMimeType(payload.config.mimeType);
+  return true;
+});
 
-    // Create MediaRecorder
-    mediaRecorder = new MediaRecorder(stream, {
-      mimeType,
-      videoBitsPerSecond: payload.config.videoBitsPerSecond,
-    });
+/**
+ * Handle OFFSCREEN_PAUSE_RECORDING
+ */
+registerHandler('OFFSCREEN_PAUSE_RECORDING', (message, _sender, sendResponse) => {
+  (async () => {
+    try {
+      const { sessionId } = message.payload;
 
-    // Handle data available (chunk accumulation)
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data && event.data.size > 0) {
-        recordedChunks.push(event.data);
-        currentSize += event.data.size;
+      captureController.pauseCapture();
 
-        console.log(`[TraceQA:Offscreen] Chunk received: ${event.data.size} bytes, total: ${currentSize} bytes`);
-
-        // Check size limits
-        const warningThreshold = RECORDING_LIMITS.MAX_FILE_SIZE_BYTES * RECORDING_LIMITS.SIZE_WARNING_THRESHOLD;
-        if (currentSize >= warningThreshold && currentSize < RECORDING_LIMITS.MAX_FILE_SIZE_BYTES) {
-          chrome.runtime.sendMessage({
-            type: 'OFFSCREEN_SIZE_WARNING',
-            payload: { sessionId: currentSessionId, currentSize },
-          });
-        }
-
-        // Auto-stop if exceeding max size
-        if (currentSize >= RECORDING_LIMITS.MAX_FILE_SIZE_BYTES) {
-          console.warn('[TraceQA:Offscreen] Max size reached, auto-stopping');
-          if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
-          }
-        }
-      }
-    };
-
-    // Handle recording stop
-    mediaRecorder.onstop = async () => {
-      console.log('[TraceQA:Offscreen] MediaRecorder stopped');
-
-      // Capture the external stop flag before any async operations
-      const wasExternalStop = streamEndedExternally;
-
-      try {
-        // Finalize blob
-        const blob = new Blob(recordedChunks, { type: mimeType });
-        const blobKey = `recording-${currentSessionId}`;
-        const duration = recordingStartTime ? Date.now() - recordingStartTime : 0;
-
-        // Store in IndexedDB
-        await storeBlob(blobKey, blob);
-
-        console.log(`[TraceQA:Offscreen] Blob stored: ${blob.size} bytes, key: ${blobKey}`);
-
-        // Send different message based on how stop was triggered
-        if (wasExternalStop) {
-          // External stop (user clicked "Stop sharing" in browser UI)
-          // Send STREAM_ENDED to preserve FSM semantics
-          console.log('[TraceQA:Offscreen] Sending OFFSCREEN_STREAM_ENDED (external stop)');
-          chrome.runtime.sendMessage({
-            type: 'OFFSCREEN_STREAM_ENDED',
-            payload: {
-              sessionId: currentSessionId,
-              blobKey,
-              size: blob.size,
-              duration,
-            },
-          });
-        } else {
-          // Requested stop (user clicked "Stop Recording" button)
-          // Send normal CAPTURE_COMPLETE
-          console.log('[TraceQA:Offscreen] Sending OFFSCREEN_CAPTURE_COMPLETE (requested stop)');
-          chrome.runtime.sendMessage({
-            type: 'OFFSCREEN_CAPTURE_COMPLETE',
-            payload: {
-              sessionId: currentSessionId,
-              blobKey,
-              size: blob.size,
-              duration,
-            },
-          });
-        }
-
-        // Cleanup
-        recordedChunks = [];
-        currentSize = 0;
-        recordingStartTime = null;
-        stopRequested = false;
-        streamEndedExternally = false;
-      } catch (error) {
-        console.error('[TraceQA:Offscreen] Error finalizing recording:', error);
-        chrome.runtime.sendMessage({
-          type: 'OFFSCREEN_CAPTURE_ERROR',
-          payload: {
-            sessionId: currentSessionId,
-            errorCode: 'ENCODER_ERROR',
-            message: error instanceof Error ? error.message : 'Unknown error',
-          },
-        });
-
-        // Reset flags on error too
-        stopRequested = false;
-        streamEndedExternally = false;
-      }
-    };
-
-    // Handle errors
-    mediaRecorder.onerror = (event) => {
-      console.error('[TraceQA:Offscreen] MediaRecorder error:', event);
+      // Notify background of successful pause
       chrome.runtime.sendMessage({
-        type: 'OFFSCREEN_CAPTURE_ERROR',
+        type: 'OFFSCREEN_PAUSED',
+        payload: { sessionId },
+      });
+
+      sendResponse({ success: true });
+    } catch (error) {
+      console.error('[Offscreen] Pause recording error:', error);
+      sendResponse({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  })();
+
+  return true;
+});
+
+/**
+ * Handle OFFSCREEN_RESUME_RECORDING
+ */
+registerHandler('OFFSCREEN_RESUME_RECORDING', (message, _sender, sendResponse) => {
+  (async () => {
+    try {
+      const { sessionId } = message.payload;
+
+      captureController.resumeCapture();
+
+      // Notify background of successful resume
+      chrome.runtime.sendMessage({
+        type: 'OFFSCREEN_RESUMED',
+        payload: { sessionId },
+      });
+
+      sendResponse({ success: true });
+    } catch (error) {
+      console.error('[Offscreen] Resume recording error:', error);
+      sendResponse({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  })();
+
+  return true;
+});
+
+/**
+ * Handle OFFSCREEN_DOWNLOAD_BLOB
+ */
+registerHandler('OFFSCREEN_DOWNLOAD_BLOB', (message, _sender, sendResponse) => {
+  (async () => {
+    try {
+      const { sessionId } = message.payload;
+      const filename = `traceqa-${sessionId}-${Date.now()}.webm`;
+
+      await captureController.downloadBlob(sessionId, filename);
+
+      chrome.runtime.sendMessage({
+        type: 'OFFSCREEN_DOWNLOAD_COMPLETE',
+        payload: { sessionId, success: true },
+      });
+
+      sendResponse({ success: true });
+    } catch (error) {
+      console.error('[Offscreen] Download blob error:', error);
+
+      chrome.runtime.sendMessage({
+        type: 'OFFSCREEN_DOWNLOAD_COMPLETE',
         payload: {
-          sessionId: currentSessionId,
-          errorCode: 'ENCODER_ERROR',
-          message: 'MediaRecorder error',
+          sessionId: message.payload.sessionId,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
         },
       });
-    };
 
-    // Handle stream ending (user stopped sharing via browser UI)
-    stream.getVideoTracks()[0].onended = () => {
-      console.log('[TraceQA:Offscreen] Stream ended externally (user clicked Stop sharing)');
+      sendResponse({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  })();
 
-      // Mark this as an external stop BEFORE calling mediaRecorder.stop()
-      // This flag is checked in onstop to send the correct message type
-      if (!stopRequested) {
-        streamEndedExternally = true;
-      }
+  return true;
+});
 
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-      }
-    };
+// ─────────────────────────────────────────────────────────────
+// Audio Handlers (Phase 7)
+// ─────────────────────────────────────────────────────────────
 
-    // Start recording with timeslice for chunking
-    mediaRecorder.start(RECORDING_LIMITS.CHUNK_INTERVAL_MS);
-    console.log('[TraceQA:Offscreen] MediaRecorder started');
-
-    // Notify background
-    chrome.runtime.sendMessage({
-      type: 'OFFSCREEN_CAPTURE_STARTED',
-      payload: { sessionId: currentSessionId },
-    });
-
+/**
+ * Handle OFFSCREEN_ENABLE_AUDIO
+ * Note: Audio is typically enabled during startCapture via config.audioEnabled
+ * This handler exists for explicit runtime enable (if needed).
+ */
+registerHandler('OFFSCREEN_ENABLE_AUDIO', (_message, _sender, sendResponse) => {
+  try {
+    console.log('[Offscreen] Explicit audio enable requested (no-op - audio enabled during capture start)');
     sendResponse({ success: true });
   } catch (error) {
-    console.error('[TraceQA:Offscreen] Start capture error:', error);
+    console.error('[Offscreen] Enable audio error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+  return false;
+});
+
+/**
+ * Handle OFFSCREEN_DISABLE_AUDIO
+ * Note: Audio is typically disabled during stopCapture cleanup.
+ * This handler exists for explicit runtime disable (if needed).
+ */
+registerHandler('OFFSCREEN_DISABLE_AUDIO', (_message, _sender, sendResponse) => {
+  try {
+    console.log('[Offscreen] Explicit audio disable requested (no-op - audio cleaned up on capture stop)');
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('[Offscreen] Disable audio error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+  return false;
+});
+
+/**
+ * Handle OFFSCREEN_SET_MUTED
+ */
+registerHandler('OFFSCREEN_SET_MUTED', (message, _sender, sendResponse) => {
+  try {
+    const { muted } = message.payload;
+
+    if (muted) {
+      captureController.muteAudio();
+    } else {
+      captureController.unmuteAudio();
+    }
+
+    console.log('[Offscreen] Audio mute state changed:', { muted });
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('[Offscreen] Set muted error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+  return false;
+});
+
+// ─────────────────────────────────────────────────────────────
+// Capture Event Handlers
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Register capture completion callback
+ */
+captureController.onCaptureComplete((sessionId, blob) => {
+  const blobKey = `recording-${sessionId}`;
+
+  console.log('[Offscreen] Capture complete:', {
+    sessionId,
+    size: blob.size,
+    blobKey,
+  });
+
+  chrome.runtime.sendMessage({
+    type: 'OFFSCREEN_CAPTURE_COMPLETE',
+    payload: {
+      sessionId,
+      blobKey,
+      size: blob.size,
+      duration: 0, // Duration tracking removed (handled by FSM context)
+    },
+  });
+});
+
+/**
+ * Register capture error callback
+ */
+captureController.onCaptureError((error) => {
+  console.error('[Offscreen] Capture error:', error);
+
+  const sessionId = captureController.getCurrentSessionId();
+  chrome.runtime.sendMessage({
+    type: 'OFFSCREEN_CAPTURE_ERROR',
+    payload: {
+      sessionId,
+      errorCode: 'ENCODER_ERROR',
+      message: error,
+    },
+  });
+});
+
+/**
+ * Register stream ended callback (user clicked browser's "Stop sharing")
+ */
+captureController.onStreamEnded(async () => {
+  console.log('[Offscreen] Stream ended externally (user clicked Stop sharing)');
+
+  const sessionId = captureController.getCurrentSessionId();
+
+  try {
+    // Finalize capture: stop recorder, assemble blob, store in IndexedDB.
+    // This MUST complete before any download is attempted.
+    // onCaptureComplete callback fires inside stopCapture() and sends
+    // OFFSCREEN_CAPTURE_COMPLETE with the correct blobKey, size, and duration.
+    await captureController.stopCapture();
+    console.log('[Offscreen] Capture finalized after external stream end');
+  } catch (error) {
+    console.error('[Offscreen] Failed to finalize after stream end:', error);
+
+    // Notify background of the failure so FSM can recover to IDLE
     chrome.runtime.sendMessage({
       type: 'OFFSCREEN_CAPTURE_ERROR',
       payload: {
-        sessionId: currentSessionId,
+        sessionId,
         errorCode: 'ENCODER_ERROR',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: error instanceof Error ? error.message : 'Failed to finalize recording after stream end',
       },
     });
-    sendResponse({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
   }
-}
-
-async function handleStopCapture(
-  payload: { sessionId: string },
-  sendResponse: (response: unknown) => void
-): Promise<void> {
-  try {
-    if (!mediaRecorder || payload.sessionId !== currentSessionId) {
-      sendResponse({ success: false, error: 'No matching recording' });
-      return;
-    }
-
-    if (mediaRecorder.state !== 'inactive') {
-      // Mark this as a requested stop (user clicked "Stop Recording")
-      // This flag is checked in onstop to send OFFSCREEN_CAPTURE_COMPLETE
-      stopRequested = true;
-
-      // Stop the media recorder - this will trigger onstop
-      mediaRecorder.stop();
-
-      // Stop all tracks
-      mediaRecorder.stream.getTracks().forEach((track) => track.stop());
-    }
-
-    sendResponse({ success: true });
-  } catch (error) {
-    console.error('[TraceQA:Offscreen] Stop capture error:', error);
-    stopRequested = false; // Reset on error
-    sendResponse({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-}
+});
 
 /**
- * Handle pause request from background.
- * Pauses the MediaRecorder, which stops data accumulation but keeps stream alive.
+ * Register audio unavailable callback
  */
-async function handlePauseRecording(
-  payload: { sessionId: string },
-  sendResponse: (response: unknown) => void
-): Promise<void> {
-  try {
-    if (!mediaRecorder || payload.sessionId !== currentSessionId) {
-      sendResponse({ success: false, error: 'No matching recording' });
-      return;
-    }
+captureController.onAudioUnavailable((reason, message) => {
+  console.warn('[Offscreen] Audio unavailable:', { reason, message });
 
-    if (mediaRecorder.state !== 'recording') {
-      sendResponse({ success: false, error: 'Not currently recording' });
-      return;
-    }
+  const sessionId = captureController.getCurrentSessionId();
+  
+  // Notify background that audio is unavailable but video continues
+  chrome.runtime.sendMessage({
+    type: 'OFFSCREEN_AUDIO_UNAVAILABLE',
+    payload: {
+      sessionId,
+      reason,
+      message,
+    },
+  });
+});
 
-    // Pause the MediaRecorder
-    mediaRecorder.pause();
-    console.log('[TraceQA:Offscreen] MediaRecorder paused');
+// ─────────────────────────────────────────────────────────────
+// Initialize Router
+// ─────────────────────────────────────────────────────────────
 
-    // Notify background that pause succeeded
-    chrome.runtime.sendMessage({
-      type: 'OFFSCREEN_PAUSED',
-      payload: { sessionId: currentSessionId },
-    });
+initializeRouter();
 
-    sendResponse({ success: true });
-  } catch (error) {
-    console.error('[TraceQA:Offscreen] Pause recording error:', error);
-    sendResponse({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-}
+console.log('[Offscreen] Offscreen document ready');
 
-/**
- * Handle resume request from background.
- * Resumes the MediaRecorder, which continues data accumulation.
- */
-async function handleResumeRecording(
-  payload: { sessionId: string },
-  sendResponse: (response: unknown) => void
-): Promise<void> {
-  try {
-    if (!mediaRecorder || payload.sessionId !== currentSessionId) {
-      sendResponse({ success: false, error: 'No matching recording' });
-      return;
-    }
-
-    if (mediaRecorder.state !== 'paused') {
-      sendResponse({ success: false, error: 'Not currently paused' });
-      return;
-    }
-
-    // Resume the MediaRecorder
-    mediaRecorder.resume();
-    console.log('[TraceQA:Offscreen] MediaRecorder resumed');
-
-    // Notify background that resume succeeded
-    chrome.runtime.sendMessage({
-      type: 'OFFSCREEN_RESUMED',
-      payload: { sessionId: currentSessionId },
-    });
-
-    sendResponse({ success: true });
-  } catch (error) {
-    console.error('[TraceQA:Offscreen] Resume recording error:', error);
-    sendResponse({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-}
-
-async function handleDownloadBlob(
-  payload: { sessionId: string; blobKey: string },
-  sendResponse: (response: unknown) => void
-): Promise<void> {
-  try {
-    console.log('[TraceQA:Offscreen] Downloading blob:', payload.blobKey);
-
-    // Open IndexedDB and retrieve the blob
-    const db = await initDB();
-    const transaction = db.transaction(IDB_CONFIG.STORE_NAME, 'readonly');
-    const store = transaction.objectStore(IDB_CONFIG.STORE_NAME);
-
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      const request = store.get(payload.blobKey);
-      request.onerror = () => reject(new Error('Failed to retrieve blob'));
-      request.onsuccess = () => {
-        if (request.result) {
-          resolve(request.result as Blob);
-        } else {
-          reject(new Error('Blob not found'));
-        }
-      };
-    });
-
-    // Create a download URL (offscreen has DOM access)
-    const url = URL.createObjectURL(blob);
-    const filename = `traceqa-${payload.sessionId}-${Date.now()}.webm`;
-
-    // Use anchor element to trigger download (chrome.downloads not available in offscreen)
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-
-    // Revoke the object URL after a short delay
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-    console.log('[TraceQA:Offscreen] Download triggered:', filename);
-
-    // Clean up blob from IndexedDB
-    const deleteTransaction = db.transaction(IDB_CONFIG.STORE_NAME, 'readwrite');
-    deleteTransaction.objectStore(IDB_CONFIG.STORE_NAME).delete(payload.blobKey);
-
-    chrome.runtime.sendMessage({
-      type: 'OFFSCREEN_DOWNLOAD_COMPLETE',
-      payload: {
-        sessionId: payload.sessionId,
-        success: true,
-      },
-    });
-
-    sendResponse({ success: true });
-  } catch (error) {
-    console.error('[TraceQA:Offscreen] Download blob error:', error);
-    chrome.runtime.sendMessage({
-      type: 'OFFSCREEN_DOWNLOAD_COMPLETE',
-      payload: {
-        sessionId: payload.sessionId,
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
-    });
-    sendResponse({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-}
-
-console.log('[TraceQA:Offscreen] Offscreen document loaded');

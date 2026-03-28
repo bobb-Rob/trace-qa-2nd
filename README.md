@@ -357,8 +357,20 @@ apps/extension-trace-qa/
 
 ## Related Documentation
 
+### Product & Architecture
 - [PRODUCT.md](PRODUCT.md) - Full product vision and lifecycle model
 - [FEATURES.md](FEATURES.md) - Complete feature specifications
 - [docs/COMPONENT-RESPONSIBILITIES.md](docs/COMPONENT-RESPONSIBILITIES.md) - Component contracts
 - [docs/MESSAGE-CONTRACTS.md](docs/MESSAGE-CONTRACTS.md) - Message protocols
 - [docs/ADR-001-media-pipeline.md](docs/ADR-001-media-pipeline.md) - Architecture decision record
+
+### Implementation Planning
+- **[GITHUB_ISSUES.md](GITHUB_ISSUES.md)** - 42 actionable GitHub issues for implementation
+- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Sprint breakdown and quick navigation
+- **[SUMMARY.md](SUMMARY.md)** - Complete overview and usage guide
+- [currentRoadMap1.md](currentRoadMap1.md) - Current implementation status
+- [plan.md](plan.md) - Original architecture plan
+
+### Scripts
+- [scripts/create_github_issues.sh](scripts/create_github_issues.sh) - Automated issue creation
+- [scripts/README.md](scripts/README.md) - Script documentation

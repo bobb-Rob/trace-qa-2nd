@@ -12,6 +12,7 @@
  */
 
 import { createFloatingPaneRenderer } from '../components/createFloatingPaneRenderer';
+import { activateCapture, deactivateCapture } from './lifecycle/sessionManager';
 import type {
   BackgroundToContentMessage,
   ContentToBackgroundMessage,
@@ -134,6 +135,20 @@ function handleMessage(
 
     case 'CONTENT_HIDE_FLOATING_PANE':
       hideFloatingPane();
+      sendResponse({ success: true });
+      break;
+
+    case 'SESSION_STARTED':
+      activateCapture({
+        sessionId: message.payload.sessionId,
+        sessionStartTime: message.payload.startTime,
+        config: message.payload.telemetryConfig,
+      });
+      sendResponse({ success: true });
+      break;
+
+    case 'SESSION_ENDED':
+      deactivateCapture();
       sendResponse({ success: true });
       break;
 

@@ -9,6 +9,7 @@ module.exports = {
     background: './src/background/index.ts',
     offscreen: './src/offscreen/index.ts',
     content: './src/content/index.ts',
+    'content/main-world': './src/content/main-world.ts',
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -20,7 +21,7 @@ module.exports = {
       {
         test: /\.tsx?$/,
         use: 'ts-loader',
-        exclude: /node_modules/,
+        exclude: [/node_modules/, /__tests__/, /\.test\.(ts|tsx)$/],
       },
       {
         test: /\.css$/,

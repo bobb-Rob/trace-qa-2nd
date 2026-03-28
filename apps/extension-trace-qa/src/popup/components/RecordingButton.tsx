@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Square, Pause } from 'lucide-react';
+import { Play, Square } from 'lucide-react';
 import { cn } from '@shared/utils/cn';
 
 interface RecordingButtonProps {
@@ -7,6 +7,7 @@ interface RecordingButtonProps {
   isPaused: boolean;
   onStart: () => void;
   onStop: () => void;
+  onResume: () => void;
   disabled?: boolean;
   isLoading?: boolean;
 }
@@ -16,23 +17,35 @@ export function RecordingButton({
   isPaused,
   onStart,
   onStop,
+  onResume,
   disabled = false,
   isLoading = false,
 }: RecordingButtonProps): React.ReactElement {
   const handleClick = (): void => {
+    const ts = () => new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    console.log(`[MIC-PERM][BUTTON] handleClick fired at ${ts()} | isRecording: ${isRecording} | disabled: ${disabled} | isLoading: ${isLoading}`);
     if (disabled || isLoading) return;
-    isRecording ? onStop() : onStart();
+
+    if (!isRecording) {
+      console.log(`[MIC-PERM][BUTTON] calling onStart() synchronously at ${ts()}`);
+      onStart();
+      console.log(`[MIC-PERM][BUTTON] onStart() returned at ${ts()} (async function returned Promise)`);
+    } else if (isPaused) {
+      onResume();
+    } else {
+      onStop();
+    }
   };
 
   const getButtonText = (): string => {
     if (!isRecording) return 'Start Recording';
-    if (isPaused) return 'Recording Paused';
+    if (isPaused) return 'Resume Recording';
     return 'Stop Recording';
   };
 
   const getIcon = (): React.ReactElement => {
     if (!isRecording) return <Play size={20} />;
-    if (isPaused) return <Pause size={20} />;
+    if (isPaused) return <Play size={20} />;  // Play icon for resume action
     return <Square size={20} />;
   };
 
@@ -51,7 +64,7 @@ export function RecordingButton({
       type="button"
       onClick={handleClick}
       disabled={disabled || isLoading}
-      data-testid={isRecording ? 'stop-recording-btn' : 'start-recording-btn'}
+      data-testid={!isRecording ? 'start-recording-btn' : isPaused ? 'resume-recording-btn' : 'stop-recording-btn'}
       className={cn(
         'w-full flex items-center justify-center gap-3',
         'py-4 px-4 rounded-lg font-semibold',
